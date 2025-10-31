@@ -1,14 +1,13 @@
+import os
 import requests
 import pandas as pd
 from pymongo import MongoClient
-import os
 
 # === 1. CONEXIÓN A MONGODB ===
-# Render tomará la URI desde una variable de entorno
 uri = os.getenv("MONGO_URI")
 
 if not uri:
-    raise ValueError("❌ Error: La variable de entorno MONGO_URI no está definida.")
+    raise ValueError("❌ No se encontró la variable MONGO_URI en el entorno de Render.")
 
 client = MongoClient(uri)
 db = client["incendios_espana"]
@@ -20,19 +19,18 @@ data_url = "https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv
 print("📡 Descargando datos FIRMS (Europa)...")
 try:
     df = pd.read_csv(data_url)
-    print(f"✅ {len(df)} registros descargados en total.")
 except Exception as e:
     print("❌ Error al descargar los datos:", e)
     exit()
+
+print(f"✅ {len(df)} registros descargados en total.")
 
 # === 3. FILTRADO GEOGRÁFICO: SOLO ESPAÑA ===
 lat_min, lat_max = 36.0, 44.5
 lon_min, lon_max = -10.0, 5.0
 
-df_espana = df[
-    (df["latitude"] >= lat_min) & (df["latitude"] <= lat_max) &
-    (df["longitude"] >= lon_min) & (df["longitude"] <= lon_max)
-]
+df_espana = df[(df["latitude"] >= lat_min) & (df["latitude"] <= lat_max) &
+               (df["longitude"] >= lon_min) & (df["longitude"] <= lon_max)]
 
 print(f"🇪🇸 {len(df_espana)} registros dentro de España.")
 
@@ -55,5 +53,9 @@ df_espana["region"] = "España"
 
 # === 5. CARGA EN MONGODB ===
 records = df_espana.to_dict(orient="records")
-collection.insert_many(records)
-print(f"💾 {len(records)} registros insertados en MongoDB en 'firms_espana'.")
+
+try:
+    collection.insert_many(records)
+    print(f"💾 {len(records)} registros insertados en MongoDB en 'firms_espana'.")
+except Exception as e:
+    print("❌ Error al insertar los datos en MongoDB:", e)
