@@ -83,7 +83,9 @@ print(f"🧹 Limpiando datos antiguos...")
 
 # Borrar predicciones más viejas de 24h
 hoy = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-borradas = collection.delete_many({"fecha_descarga": {"$lt": hoy}})
+
+# Eliminar predicciones de días que ya han pasado (fecha < hoy)
+borradas = collection.delete_many({"fecha": {"$lt": hoy.isoformat()}})
 print(f"🗑️ {borradas.deleted_count} registros antiguos eliminados.")
 
 print(f"🌍 Obteniendo predicciones para {len(municipios)} provincias...")
@@ -99,3 +101,4 @@ for codigo, nombre in municipios.items():
         time.sleep(8)
 
 print("✅ Actualización AEMET completada correctamente.")
+
