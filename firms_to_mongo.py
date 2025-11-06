@@ -2,6 +2,7 @@ import os
 import requests
 import pandas as pd
 from pymongo import MongoClient
+from datetime import datetime, timedelta
 
 # === 1. CONEXIÓN A MONGODB ===
 uri = os.getenv("MONGO_URI")
@@ -51,11 +52,33 @@ df_espana = df_espana.rename(columns={
 df_espana["fuente"] = "MODIS"
 df_espana["region"] = "España"
 
-# === 5. CARGA EN MONGODB ===
+# === 5. CONVERTIR FECHA Y HORA A DATETIME ===
+# Combina "fecha" y "hora" en una sola columna tipo datetime
+def parse_datetime(row):
+    try:
+        return datetime.strptime(f"{row['fecha']} {str(row['hora']).zfill(4)}", "%Y-%m-%d %H%M")
+    except:
+        return pd.NaT
+
+df_espana["datetime"] = df_espana.apply(parse_datetime, axis=1)
+df_espana = df_espana.dropna(subset=["datetime"])
+
+# === 6. BORRAR DATOS ANTIGUOS DE MONGODB ===
+limite_tiempo = datetime.utcnow() - timedelta(hours=24)
+borrados = collection.delete_many({"datetime": {"$lt": limite_tiempo}}).deleted_count
+print(f"🧹 {borrados} registros antiguos (anteriores a 24h) eliminados de MongoDB.")
+
+# === 7. INSERTAR NUEVOS REGISTROS ===
 records = df_espana.to_dict(orient="records")
 
 try:
-    collection.insert_many(records)
-    print(f"💾 {len(records)} registros insertados en MongoDB en 'firms_espana'.")
+    if records:
+        collection.insert_many(records)
+        print(f"💾 {len(records)} registros insertados en MongoDB en 'firms_espana'.")
+    else:
+        print("⚠️ No hay registros nuevos para insertar.")
 except Exception as e:
     print("❌ Error al insertar los datos en MongoDB:", e)
+
+# === 8. INFORME FINAL ===
+print("✅ Actualización completada correctamente.")
