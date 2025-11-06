@@ -13,14 +13,14 @@ if not uri:
 print("🔗 Conectando a MongoDB...")
 client = MongoClient(uri)
 db = client["incendios_espana"]
-collection = db["firms_actualizado"]  # ✅ Nueva colección
+collection = db["firms_actualizado"]
 
 print("📚 Base de datos conectada:", db.name)
 
-# === 2. DESCARGA DE DATOS NASA FIRMS (MODIS, últimas 24h, Europa) ===
-data_url = "https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_Europe_24h.csv"
+# === 2. DESCARGA DE DATOS NASA FIRMS (MODIS, últimos 7 días, Europa) ===
+data_url = "https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_Europe_7d.csv"
 
-print("\n📡 Descargando datos FIRMS (Europa)...")
+print("\n📡 Descargando datos FIRMS (Europa, últimos 7 días)...")
 try:
     df = pd.read_csv(data_url)
 except Exception as e:
@@ -53,57 +53,45 @@ df_espana = df_espana.rename(columns={
     "frp": "potencia_radiativa",
     "confidence": "confianza"
 })
-
 df_espana["fuente"] = "MODIS"
 df_espana["region"] = "España"
 
-# === 5. COMBINAR FECHA Y HORA EN UN DATETIME ===
+# === 5. COMBINAR FECHA Y HORA EN DATETIME (UTC) ===
 def parse_datetime(row):
     try:
         return datetime.strptime(f"{row['fecha']} {str(row['hora']).zfill(4)}", "%Y-%m-%d %H%M").replace(tzinfo=timezone.utc)
-    except Exception:
+    except:
         return pd.NaT
 
 df_espana["datetime"] = df_espana.apply(parse_datetime, axis=1)
 df_espana = df_espana.dropna(subset=["datetime"])
 
-# === 6. FILTRAR SOLO ÚLTIMAS 24 HORAS ===
-limite_tiempo = datetime.now(timezone.utc) - timedelta(hours=24)
-df_24h = df_espana[df_espana["datetime"] >= limite_tiempo]
+# === 6. BORRAR DATOS ANTIGUOS (más de 7 días) ===
+limite_tiempo = datetime.now(timezone.utc) - timedelta(days=7)
+borrados = collection.delete_many({"datetime": {"$lt": limite_tiempo}}).deleted_count
+print(f"🧹 Se eliminaron {borrados} registros antiguos (anteriores a 7 días).")
 
-print(f"🕒 {len(df_24h)} registros dentro de las últimas 24 horas.")
+# === 7. EVITAR DUPLICADOS (por coordenadas + datetime) ===
+collection.create_index([("latitud", 1), ("longitud", 1), ("datetime", 1)], unique=True)
 
-if df_24h.empty:
-    print("⚠️ No hay registros dentro de las últimas 24 horas.")
-    exit()
+# === 8. INSERTAR NUEVOS DATOS (ignorando duplicados) ===
+records = df_espana.to_dict(orient="records")
+insertados = 0
 
-# === 7. BORRAR TODO EL CONTENIDO ANTERIOR DE LA COLECCIÓN ===
-borrados = collection.delete_many({}).deleted_count
-print(f"🧹 Se eliminaron {borrados} registros antiguos de 'firms_actualizado'.")
+for record in records:
+    try:
+        collection.update_one(
+            {"latitud": record["latitud"], "longitud": record["longitud"], "datetime": record["datetime"]},
+            {"$setOnInsert": record},
+            upsert=True
+        )
+        insertados += 1
+    except Exception:
+        continue
 
-# === 8. INSERTAR LOS NUEVOS REGISTROS ===
-records = df_24h.to_dict(orient="records")
+print(f"💾 {insertados} registros actualizados/insertados en 'firms_actualizado'.")
 
-try:
-    collection.insert_many(records)
-    print(f"💾 {len(records)} registros insertados en MongoDB en 'firms_actualizado'.")
-except Exception as e:
-    print("❌ Error al insertar los datos en MongoDB:", e)
-    exit()
-
-# === 9. CREAR ÍNDICE EN CAMPO datetime (si no existe) ===
-collection.create_index("datetime")
-print("⚙️ Índice en 'datetime' creado o ya existente.")
-
-# === 10. VERIFICAR INSERCIÓN ===
-count = collection.count_documents({})
-if count > 0:
-    print(f"✅ La colección 'firms_actualizado' ahora contiene {count} documentos.")
-    muestra = list(collection.find({}, {"_id": 0}).limit(3))
-    print("\n📄 Ejemplo de registros insertados:")
-    for doc in muestra:
-        print(doc)
-else:
-    print("⚠️ No se insertaron datos en la colección.")
-
-print("\n🏁 Proceso completado correctamente.")
+# === 9. INFORME FINAL ===
+total = collection.count_documents({})
+print(f"✅ La colección 'firms_actualizado' contiene ahora {total} registros (últimos 7 días).")
+print("🏁 Actualización completada correctamente.")
