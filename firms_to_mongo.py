@@ -12,7 +12,7 @@ if not uri:
 
 client = MongoClient(uri)
 db = client["incendios_espana"]
-collection = db["firms_espana"]
+collection = db["firms_actualizado"]  # ✅ nueva colección
 
 # === 2. DESCARGA DE DATOS NASA FIRMS (MODIS, últimas 24h, Europa) ===
 data_url = "https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_Europe_24h.csv"
@@ -30,8 +30,10 @@ print(f"✅ {len(df)} registros descargados en total.")
 lat_min, lat_max = 36.0, 44.5
 lon_min, lon_max = -10.0, 5.0
 
-df_espana = df[(df["latitude"] >= lat_min) & (df["latitude"] <= lat_max) &
-               (df["longitude"] >= lon_min) & (df["longitude"] <= lon_max)]
+df_espana = df[
+    (df["latitude"] >= lat_min) & (df["latitude"] <= lat_max) &
+    (df["longitude"] >= lon_min) & (df["longitude"] <= lon_max)
+]
 
 print(f"🇪🇸 {len(df_espana)} registros dentro de España.")
 
@@ -52,8 +54,7 @@ df_espana = df_espana.rename(columns={
 df_espana["fuente"] = "MODIS"
 df_espana["region"] = "España"
 
-# === 5. CONVERTIR FECHA Y HORA A DATETIME ===
-# Combina "fecha" y "hora" en una sola columna tipo datetime
+# === 5. COMBINAR FECHA Y HORA EN UN DATETIME ===
 def parse_datetime(row):
     try:
         return datetime.strptime(f"{row['fecha']} {str(row['hora']).zfill(4)}", "%Y-%m-%d %H%M")
@@ -63,22 +64,32 @@ def parse_datetime(row):
 df_espana["datetime"] = df_espana.apply(parse_datetime, axis=1)
 df_espana = df_espana.dropna(subset=["datetime"])
 
-# === 6. BORRAR DATOS ANTIGUOS DE MONGODB ===
+# === 6. FILTRAR SOLO ÚLTIMAS 24 HORAS ===
 limite_tiempo = datetime.utcnow() - timedelta(hours=24)
-borrados = collection.delete_many({"datetime": {"$lt": limite_tiempo}}).deleted_count
-print(f"🧹 {borrados} registros antiguos (anteriores a 24h) eliminados de MongoDB.")
+df_24h = df_espana[df_espana["datetime"] >= limite_tiempo]
 
-# === 7. INSERTAR NUEVOS REGISTROS ===
-records = df_espana.to_dict(orient="records")
+print(f"🕒 {len(df_24h)} registros dentro de las últimas 24 horas.")
+
+if df_24h.empty:
+    print("⚠️ No hay registros dentro de las últimas 24 horas.")
+    exit()
+
+# === 7. BORRAR TODO EL CONTENIDO ANTERIOR DE LA COLECCIÓN ===
+borrados = collection.delete_many({}).deleted_count
+print(f"🧹 Se eliminaron {borrados} registros antiguos de 'firms_actualizado'.")
+
+# === 8. INSERTAR LOS NUEVOS REGISTROS ===
+records = df_24h.to_dict(orient="records")
 
 try:
-    if records:
-        collection.insert_many(records)
-        print(f"💾 {len(records)} registros insertados en MongoDB en 'firms_espana'.")
-    else:
-        print("⚠️ No hay registros nuevos para insertar.")
+    collection.insert_many(records)
+    print(f"💾 {len(records)} registros insertados en MongoDB en 'firms_actualizado'.")
 except Exception as e:
     print("❌ Error al insertar los datos en MongoDB:", e)
 
-# === 8. INFORME FINAL ===
-print("✅ Actualización completada correctamente.")
+# === 9. CREAR ÍNDICE EN CAMPO datetime (si no existe) ===
+collection.create_index("datetime")
+print("⚙️ Índice en 'datetime' creado o ya existente.")
+
+# === 10. INFORME FINAL ===
+print("✅ Actualización completada correctamente en 'firms_actualizado'.")
