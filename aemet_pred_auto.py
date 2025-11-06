@@ -2,6 +2,7 @@ import requests
 import time
 from pymongo import MongoClient
 from datetime import datetime, timezone
+import sys
 
 # === CONFIGURACIÓN ===
 AEMET_API_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhaXRvcmhlcnJhbjA2QGdtYWlsLmNvbSIsImp0aSI6ImViN2QwMTc3LTA5NTItNDVlMS1iNTQxLWE0NjE1NGE0ODI2NSIsImlzcyI6IkFFTUVUIiwiaWF0IjoxNzYxOTA2OTg3LCJ1c2VySWQiOiJlYjdkMDE3Ny0wOTUyLTQ1ZTEtYjU0MS1hNDYxNTRhNDgyNjUiLCJyb2xlIjoiIn0.H6qykz_KfzUA8nxkHjoLch0N8V2P1yhYztWupxNEkZ0"
@@ -11,7 +12,7 @@ client = MongoClient(MONGO_URI)
 db = client["incendios_espana"]
 collection = db["aemet_predicciones"]
 
-# === LISTA COMPLETA DE MUNICIPIOS (50 provincias españolas) ===
+# === LISTA DE MUNICIPIOS (50 provincias españolas) ===
 municipios = {
     "01059": "Álava", "02003": "Albacete", "03014": "Alicante", "04013": "Almería",
     "05019": "Ávila", "06015": "Badajoz", "07040": "Islas Baleares", "08019": "Barcelona",
@@ -27,7 +28,6 @@ municipios = {
     "44069": "Teruel", "45081": "Toledo", "46085": "Valencia", "47053": "Valladolid",
     "48020": "Bizkaia", "49021": "Zamora", "50297": "Zaragoza"
 }
-
 
 def obtener_prediccion(codigo, nombre):
     """Descarga e inserta la predicción de una provincia."""
@@ -76,15 +76,12 @@ def obtener_prediccion(codigo, nombre):
             time.sleep(3)
     print(f"❌ Error persistente en {nombre} tras varios intentos.")
 
-
 # === EJECUCIÓN PRINCIPAL ===
 print(f"🕘 Iniciando actualización AEMET {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}...")
-print(f"🧹 Limpiando datos antiguos...")
+print("🧹 Limpiando datos antiguos...")
 
-# Borrar predicciones más viejas de 24h
+# Borrar predicciones de días pasados
 hoy = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-
-# Eliminar predicciones de días que ya han pasado (fecha < hoy)
 borradas = collection.delete_many({"fecha": {"$lt": hoy.isoformat()}})
 print(f"🗑️ {borradas.deleted_count} registros antiguos eliminados.")
 
@@ -100,5 +97,10 @@ for codigo, nombre in municipios.items():
     else:
         time.sleep(8)
 
-print("✅ Actualización AEMET completada correctamente.")
+print("✅ Job AEMET completado correctamente.")
+sys.stdout.flush()
+time.sleep(2)
+
+
+
 
