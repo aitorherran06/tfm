@@ -29,7 +29,7 @@ except Exception as e:
 
 print(f"✅ {len(df)} registros descargados en total.")
 
-# === 3. FILTRADO GEOGRÁFICO: SOLO ESPAÑA ===
+# === 3. FILTRADO GEOGRÁFICO: SOLO ESPAÑA (península + Baleares aprox.) ===
 lat_min, lat_max = 36.0, 44.5
 lon_min, lon_max = -10.0, 5.0
 
@@ -38,7 +38,7 @@ df_espana = df[
     (df["longitude"] >= lon_min) & (df["longitude"] <= lon_max)
 ]
 
-print(f"🇪🇸 {len(df_espana)} registros dentro de España.")
+print(f"🇪🇸 {len(df_espana)} registros dentro del bounding box de España.")
 
 if df_espana.empty:
     print("⚠️ No se encontraron puntos dentro de España.")
@@ -59,8 +59,11 @@ df_espana["region"] = "España"
 # === 5. COMBINAR FECHA Y HORA EN DATETIME (UTC) ===
 def parse_datetime(row):
     try:
-        return datetime.strptime(f"{row['fecha']} {str(row['hora']).zfill(4)}", "%Y-%m-%d %H%M").replace(tzinfo=timezone.utc)
-    except:
+        return datetime.strptime(
+            f"{row['fecha']} {str(row['hora']).zfill(4)}",
+            "%Y-%m-%d %H%M"
+        ).replace(tzinfo=timezone.utc)
+    except Exception:
         return pd.NaT
 
 df_espana["datetime"] = df_espana.apply(parse_datetime, axis=1)
@@ -68,11 +71,26 @@ df_espana = df_espana.dropna(subset=["datetime"])
 
 # === 6. BORRAR DATOS ANTIGUOS (más de 7 días) ===
 limite_tiempo = datetime.now(timezone.utc) - timedelta(days=7)
-borrados = collection.delete_many({"datetime": {"$lt": limite_tiempo}}).deleted_count
-print(f"🧹 Se eliminaron {borrados} registros antiguos (anteriores a 7 días).")
+borrados_fecha = collection.delete_many({"datetime": {"$lt": limite_tiempo}}).deleted_count
+print(f"🧹 Se eliminaron {borrados_fecha} registros antiguos (anteriores a 7 días).")
+
+# === 6bis. BORRAR CUALQUIER PUNTO FUERA DE ESPAÑA EN BBDD (LIMPIEZA EXTRA) ===
+# Por si quedaron registros antiguos con coordenadas fuera del bounding box
+borrados_fuera = collection.delete_many({
+    "$or": [
+        {"latitud": {"$lt": lat_min}},
+        {"latitud": {"$gt": lat_max}},
+        {"longitud": {"$lt": lon_min}},
+        {"longitud": {"$gt": lon_max}},
+    ]
+}).deleted_count
+print(f"🧹 Se eliminaron {borrados_fuera} registros fuera del bounding box de España.")
 
 # === 7. EVITAR DUPLICADOS (por coordenadas + datetime) ===
-collection.create_index([("latitud", 1), ("longitud", 1), ("datetime", 1)], unique=True)
+collection.create_index(
+    [("latitud", 1), ("longitud", 1), ("datetime", 1)],
+    unique=True
+)
 
 # === 8. INSERTAR NUEVOS DATOS (ignorando duplicados) ===
 records = df_espana.to_dict(orient="records")
@@ -81,17 +99,22 @@ insertados = 0
 for record in records:
     try:
         collection.update_one(
-            {"latitud": record["latitud"], "longitud": record["longitud"], "datetime": record["datetime"]},
+            {
+                "latitud": record["latitud"],
+                "longitud": record["longitud"],
+                "datetime": record["datetime"]
+            },
             {"$setOnInsert": record},
             upsert=True
         )
         insertados += 1
     except Exception:
+        # Si salta por unique index, lo ignoramos
         continue
 
 print(f"💾 {insertados} registros actualizados/insertados en 'firms_actualizado'.")
 
 # === 9. INFORME FINAL ===
 total = collection.count_documents({})
-print(f"✅ La colección 'firms_actualizado' contiene ahora {total} registros (últimos 7 días).")
+print(f"✅ La colección 'firms_actualizado' contiene ahora {total} registros (últimos 7 días, solo España).")
 print("🏁 Actualización completada correctamente.")
