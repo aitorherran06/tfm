@@ -29,16 +29,24 @@ except Exception as e:
 
 print(f"✅ {len(df)} registros descargados en total.")
 
-# === 3. FILTRADO GEOGRÁFICO: SOLO ESPAÑA (península + Baleares aprox.) ===
+# === 3. FILTRADO GEOGRÁFICO: SOLO ESPAÑA (bbox + excluir norte de África) ===
 lat_min, lat_max = 36.0, 44.5
 lon_min, lon_max = -10.0, 5.0
 
+# Bounding box general alrededor de España
 df_espana = df[
     (df["latitude"] >= lat_min) & (df["latitude"] <= lat_max) &
     (df["longitude"] >= lon_min) & (df["longitude"] <= lon_max)
-]
+].copy()
 
-print(f"🇪🇸 {len(df_espana)} registros dentro del bounding box de España.")
+# EXCLUIR franja típica de Argelia / norte de África:
+# puntos con lat < 37 y lon > 0 (al sur del Mediterráneo, hacia Argel)
+df_espana = df_espana[~(
+    (df_espana["latitude"] < 37.0) &
+    (df_espana["longitude"] > 0.0)
+)]
+
+print(f"🇪🇸 {len(df_espana)} registros dentro del área España (ajustada).")
 
 if df_espana.empty:
     print("⚠️ No se encontraron puntos dentro de España.")
@@ -75,16 +83,22 @@ borrados_fecha = collection.delete_many({"datetime": {"$lt": limite_tiempo}}).de
 print(f"🧹 Se eliminaron {borrados_fecha} registros antiguos (anteriores a 7 días).")
 
 # === 6bis. BORRAR CUALQUIER PUNTO FUERA DE ESPAÑA EN BBDD (LIMPIEZA EXTRA) ===
-# Por si quedaron registros antiguos con coordenadas fuera del bounding box
+# Por si quedaron registros antiguos fuera del área España (incluida la franja norte de África)
 borrados_fuera = collection.delete_many({
     "$or": [
         {"latitud": {"$lt": lat_min}},
         {"latitud": {"$gt": lat_max}},
         {"longitud": {"$lt": lon_min}},
         {"longitud": {"$gt": lon_max}},
+        {  # franja norte de África: lat < 37 y lon > 0
+            "$and": [
+                {"latitud": {"$lt": 37.0}},
+                {"longitud": {"$gt": 0.0}}
+            ]
+        }
     ]
 }).deleted_count
-print(f"🧹 Se eliminaron {borrados_fuera} registros fuera del bounding box de España.")
+print(f"🧹 Se eliminaron {borrados_fuera} registros fuera del área España.")
 
 # === 7. EVITAR DUPLICADOS (por coordenadas + datetime) ===
 collection.create_index(
@@ -116,5 +130,5 @@ print(f"💾 {insertados} registros actualizados/insertados en 'firms_actualizad
 
 # === 9. INFORME FINAL ===
 total = collection.count_documents({})
-print(f"✅ La colección 'firms_actualizado' contiene ahora {total} registros (últimos 7 días, solo España).")
+print(f"✅ La colección 'firms_actualizado' contiene ahora {total} registros (últimos 7 días, área España).")
 print("🏁 Actualización completada correctamente.")
