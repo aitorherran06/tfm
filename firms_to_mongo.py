@@ -29,24 +29,25 @@ except Exception as e:
 
 print(f"✅ {len(df)} registros descargados en total.")
 
-# === 3. FILTRADO GEOGRÁFICO: SOLO ESPAÑA (bbox + excluir norte de África) ===
+# === 3. FILTRADO GEOGRÁFICO: SOLO ÁREA ESPAÑA (bbox + excluir África + Francia) ===
 lat_min, lat_max = 36.0, 44.5
 lon_min, lon_max = -10.0, 5.0
 
-# Bounding box general alrededor de España
+# 3.1 Bounding box general
 df_espana = df[
     (df["latitude"] >= lat_min) & (df["latitude"] <= lat_max) &
     (df["longitude"] >= lon_min) & (df["longitude"] <= lon_max)
 ].copy()
 
-# EXCLUIR franja típica de Argelia / norte de África:
-# puntos con lat < 37 y lon > 0 (al sur del Mediterráneo, hacia Argel)
-df_espana = df_espana[~(
-    (df_espana["latitude"] < 37.0) &
-    (df_espana["longitude"] > 0.0)
-)]
+# 3.2 Excluir norte de África (lat < 37 y lon > 0)
+mask_africa = (df_espana["latitude"] < 37.0) & (df_espana["longitude"] > 0.0)
 
-print(f"🇪🇸 {len(df_espana)} registros dentro del área España (ajustada).")
+# 3.3 Excluir sur de Francia (lat > 43.6 y lon > -5)
+mask_francia = (df_espana["latitude"] > 43.6) & (df_espana["longitude"] > -5.0)
+
+df_espana = df_espana[~(mask_africa | mask_francia)]
+
+print(f"🇪🇸 {len(df_espana)} registros dentro del área España ajustada.")
 
 if df_espana.empty:
     print("⚠️ No se encontraron puntos dentro de España.")
@@ -82,18 +83,23 @@ limite_tiempo = datetime.now(timezone.utc) - timedelta(days=7)
 borrados_fecha = collection.delete_many({"datetime": {"$lt": limite_tiempo}}).deleted_count
 print(f"🧹 Se eliminaron {borrados_fecha} registros antiguos (anteriores a 7 días).")
 
-# === 6bis. BORRAR CUALQUIER PUNTO FUERA DE ESPAÑA EN BBDD (LIMPIEZA EXTRA) ===
-# Por si quedaron registros antiguos fuera del área España (incluida la franja norte de África)
+# === 6bis. BORRAR CUALQUIER PUNTO FUERA DEL ÁREA EN BBDD (LIMPIEZA EXTRA) ===
 borrados_fuera = collection.delete_many({
     "$or": [
         {"latitud": {"$lt": lat_min}},
         {"latitud": {"$gt": lat_max}},
         {"longitud": {"$lt": lon_min}},
         {"longitud": {"$gt": lon_max}},
-        {  # franja norte de África: lat < 37 y lon > 0
+        {  # franja norte de África
             "$and": [
                 {"latitud": {"$lt": 37.0}},
                 {"longitud": {"$gt": 0.0}}
+            ]
+        },
+        {  # sur de Francia
+            "$and": [
+                {"latitud": {"$gt": 43.6}},
+                {"longitud": {"$gt": -5.0}}
             ]
         }
     ]
@@ -123,7 +129,6 @@ for record in records:
         )
         insertados += 1
     except Exception:
-        # Si salta por unique index, lo ignoramos
         continue
 
 print(f"💾 {insertados} registros actualizados/insertados en 'firms_actualizado'.")
