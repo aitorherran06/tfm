@@ -29,31 +29,20 @@ except Exception as e:
 
 print(f"✅ {len(df)} registros descargados en total.")
 
-# === 3. FILTRADO GEOGRÁFICO: SOLO ÁREA ESPAÑA (bbox + excluir África + Francia) ===
-# Bounding box amplio alrededor de la península
-lat_min, lat_max = 35.0, 44.5
+# === 3. FILTRADO GEOGRÁFICO: ÁREA ESPAÑA (bounding box simple) ===
+# Aproximación: península + algo de margen
+lat_min, lat_max = 36.0, 44.5
 lon_min, lon_max = -10.0, 4.5
 
-# 3.1 Filtrado inicial por bounding box
 df_espana = df[
     (df["latitude"] >= lat_min) & (df["latitude"] <= lat_max) &
     (df["longitude"] >= lon_min) & (df["longitude"] <= lon_max)
 ].copy()
 
-# 3.2 Excluir norte de África:
-# zona aproximada: lat < 37 y lon > -1 (sur del Mediterráneo, Argelia, Túnez, etc.)
-mask_africa = (df_espana["latitude"] < 37.0) & (df_espana["longitude"] > -1.0)
-
-# 3.3 Excluir sur de Francia:
-# lat > 43.9 (España no pasa de ~43.8ºN)
-mask_francia = df_espana["latitude"] > 43.9
-
-df_espana = df_espana[~(mask_africa | mask_francia)]
-
-print(f"🇪🇸 {len(df_espana)} registros dentro del área España (ajustada).")
+print(f"🇪🇸 {len(df_espana)} registros dentro del bounding box de España.")
 
 if df_espana.empty:
-    print("⚠️ No se encontraron puntos dentro de España.")
+    print("⚠️ No se encontraron puntos dentro del área España.")
     raise SystemExit(0)
 
 # === 4. LIMPIEZA Y RENOMBRADO ===
@@ -66,7 +55,7 @@ df_espana = df_espana.rename(columns={
     "confidence": "confianza"
 })
 df_espana["fuente"] = "MODIS"
-df_espana["region"] = "España"
+df_espana["region"] = "España"  # área España según bounding box
 
 # === 5. COMBINAR FECHA Y HORA EN DATETIME (UTC) ===
 def parse_datetime(row):
@@ -88,27 +77,7 @@ limite_tiempo = datetime.now(timezone.utc) - timedelta(days=7)
 borrados_fecha = collection.delete_many({"datetime": {"$lt": limite_tiempo}}).deleted_count
 print(f"🧹 Se eliminaron {borrados_fecha} registros antiguos (anteriores a 7 días).")
 
-# === 6bis. BORRAR EN BBDD CUALQUIER PUNTO FUERA DEL ÁREA ESPAÑA (LIMPIEZA EXTRA) ===
-borrados_fuera = collection.delete_many({
-    "$or": [
-        {"latitud": {"$lt": lat_min}},
-        {"latitud": {"$gt": lat_max}},
-        {"longitud": {"$lt": lon_min}},
-        {"longitud": {"$gt": lon_max}},
-        {  # franja norte de África
-            "$and": [
-                {"latitud": {"$lt": 37.0}},
-                {"longitud": {"$gt": -1.0}}
-            ]
-        },
-        {  # sur de Francia
-            "latitud": {"$gt": 43.9}
-        }
-    ]
-}).deleted_count
-print(f"🧹 Se eliminaron {borrados_fuera} registros fuera del área España.")
-
-# === 7. EVITAR DUPLICADOS (por coordenadas + datetime) ===
+# === 7. ÍNDICE ÚNICO PARA EVITAR DUPLICADOS ===
 collection.create_index(
     [("latitud", 1), ("longitud", 1), ("datetime", 1)],
     unique=True
