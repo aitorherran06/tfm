@@ -109,26 +109,22 @@ def norm_nombre(series: pd.Series) -> pd.Series:
         .str.strip()
     )
 
-
 # =========================================================
-# AUX: histograma agregado (server-side) para no petar Altair
+# AUX: histograma agregado (server-side)
 # =========================================================
 def hist_counts(series: pd.Series, bins: int = 50) -> pd.DataFrame:
     s = pd.to_numeric(series, errors="coerce").dropna()
     if s.empty:
         return pd.DataFrame(columns=["bin_left", "bin_right", "count"])
     counts, edges = np.histogram(s, bins=bins)
-    return pd.DataFrame({"bin_left": edges[:-1], "bin_right": edges[1:], "count": counts})
-
+    return pd.DataFrame(
+        {"bin_left": edges[:-1], "bin_right": edges[1:], "count": counts}
+    )
 
 # =========================================================
-# AUX: auto-elegir transformación para FRP (para que se entienda sin filtros)
+# AUX: transformación automática FRP
 # =========================================================
 def choose_frp_transform(series: pd.Series):
-    """
-    Decide automáticamente si mostrar FRP en escala normal o log1p.
-    Criterio simple: si hay mucha asimetría (cola larga), usa log1p.
-    """
     s = pd.to_numeric(series, errors="coerce").dropna()
     if s.empty:
         return s, "FRP (MW)", "No hay valores FRP válidos."
@@ -141,35 +137,37 @@ def choose_frp_transform(series: pd.Series):
         return (
             np.log1p(s),
             "FRP (log1p)",
-            "FRP suele tener muchos valores pequeños y pocos muy grandes; por eso se muestra en escala log para que se vea la forma.",
+            "FRP tiene cola larga; se muestra en escala logarítmica.",
         )
     if p50 == 0 and p95 > 0:
         return (
             np.log1p(s),
             "FRP (log1p)",
-            "FRP tiene muchos ceros/valores pequeños y algunos grandes; se muestra en escala log para que se entienda mejor.",
+            "FRP con muchos ceros; se muestra en escala logarítmica.",
         )
-    return s, "FRP (MW)", "FRP se muestra en escala normal."
-
+    return s, "FRP (MW)", "FRP en escala normal."
 
 # =========================================================
-# ✅ NUEVO: bins automáticos + recorte suave de outliers
+# AUX: bins automáticos + recorte suave
 # =========================================================
 def auto_bins(series: pd.Series, min_bins: int = 30, max_bins: int = 60) -> int:
     s = pd.to_numeric(series, errors="coerce").dropna()
     if len(s) < 50:
         return min_bins
-    edges = np.histogram_bin_edges(s, bins="fd")  # Freedman–Diaconis
+    edges = np.histogram_bin_edges(s, bins="fd")
     bins = max(1, len(edges) - 1)
     return int(np.clip(bins, min_bins, max_bins))
 
 
-def clip_quantiles(series: pd.Series, q_low: float = 0.005, q_high: float = 0.995) -> pd.Series:
+def clip_quantiles(
+    series: pd.Series, q_low: float = 0.005, q_high: float = 0.995
+) -> pd.Series:
     s = pd.to_numeric(series, errors="coerce").dropna()
     if s.empty:
         return s
     lo, hi = s.quantile([q_low, q_high]).values
     return s[(s >= lo) & (s <= hi)]
+
 
 
 # =========================================================
@@ -950,5 +948,6 @@ Este gráfico muestra **asociaciones estadísticas** entre variables meteorológ
             .sort_values("effis_area_ha", ascending=False)
         )
         st.dataframe(prov_tot, use_container_width=True)
+
 
 
