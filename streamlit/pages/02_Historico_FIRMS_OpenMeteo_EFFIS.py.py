@@ -1,6 +1,12 @@
 import os
+import json
+
 import streamlit as st
 import pandas as pd
+import numpy as np
+import altair as alt
+import pydeck as pdk   # ← ESTA LÍNEA FALTABA
+import geopandas as gpd
 from pymongo import MongoClient
 
 # =========================================================
@@ -1016,5 +1022,6 @@ Este gráfico muestra **asociaciones estadísticas** entre variables meteorológ
             .sort_values("effis_area_ha", ascending=False)
         )
         st.dataframe(prov_tot, use_container_width=True)
+
 
 
