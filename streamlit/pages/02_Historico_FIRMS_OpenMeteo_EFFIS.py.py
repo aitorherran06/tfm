@@ -7,7 +7,6 @@ import numpy as np
 import altair as alt
 import pydeck as pdk
 import geopandas as gpd
-from pymongo import MongoClient
 
 # =========================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -22,114 +21,58 @@ st.title("🔥 Incendios en España – FIRMS + Open-Meteo + EFFIS")
 st.markdown(
     """
 Esta web combina tres fuentes:
-- **FIRMS (NASA, satélite)**: detecciones térmicas.
-- **Open-Meteo**: meteorología.
-- **EFFIS (Copernicus)**: área quemada.
+- **FIRMS (NASA, satélite)**: detecciones térmicas (posibles focos).
+- **Open-Meteo**: meteorología (temperatura, humedad, etc.).
+- **EFFIS (Copernicus)**: área quemada e incendios (polígonos).
 
 **Dos niveles de datos**:
-- **Evento**: detecciones individuales.
-- **Provincia–día**: datos agregados.
+- **Evento**: cada fila = una detección FIRMS (punto en el mapa).
+- **Provincia–día**: cada fila = una provincia en un día (valores agregados).
 """
 )
 
 # =========================================================
-# CONEXIÓN A MONGO (SEGURA)
+# 📂 CARGA DE DATOS
 # =========================================================
-@st.cache_resource(show_spinner=True)
-def conectar_mongo():
-    try:
-        uri = st.secrets["MONGO"]["URI"]
-    except KeyError:
-        st.error("❌ Falta el secret MONGO.URI en Streamlit Cloud")
-        st.stop()
+DATA_DIR = r"C:\Users\aitor.herran\Desktop\incendios"  # ajusta si cambia la ruta
 
-    try:
-        client = MongoClient(uri, serverSelectionTimeoutMS=5000)
-        client.admin.command("ping")
-    except Exception as e:
-        st.error(f"❌ No se pudo conectar a MongoDB:\n{e}")
-        st.stop()
 
-    return client["incendios_espana"]
-
-db = conectar_mongo()
-
-# =========================================================
-# CARGA DE DATOS DESDE MONGO (CONTROLADA)
-# =========================================================
 @st.cache_data(show_spinner=True)
 def load_data():
-    # --- EVENTOS (LIMITADOS) ---
-    df_clean = pd.DataFrame(
-        list(
-            db["fires_effis_clean"]
-            .find({}, {"_id": 0})
-            .limit(150_000)
-        )
-    )
+    path_clean = os.path.join(DATA_DIR, "fires_openmeteo_effis_clean.csv")
+    path_daily = os.path.join(DATA_DIR, "prov_daily_viz.csv")
+    path_events = os.path.join(DATA_DIR, "events_viz.csv")
+    path_prov_geo = os.path.join(DATA_DIR, "gadm41_ESP_2.json")
 
-    df_events = pd.DataFrame(
-        list(
-            db["events_viz"]
-            .find({}, {"_id": 0})
-            .limit(150_000)
-        )
-    )
-
-    # --- PROVINCIA–DÍA (PEQUEÑO, SE CARGA ENTERO) ---
-    df_daily = pd.DataFrame(
-        list(db["prov_daily_viz"].find({}, {"_id": 0}))
-    )
-
-    # --- FECHAS ---
+    df_clean = pd.read_csv(path_clean, low_memory=False)
     if "firms_date" in df_clean.columns:
         df_clean["firms_date"] = pd.to_datetime(df_clean["firms_date"], errors="coerce")
         df_clean["year"] = df_clean["firms_date"].dt.year
         df_clean["date_only"] = df_clean["firms_date"].dt.date
+    if "provincia" in df_clean.columns:
+        df_clean["provincia"] = df_clean["provincia"].astype(str).str.strip()
 
-    if "date" in df_daily.columns:
-        df_daily["date"] = pd.to_datetime(df_daily["date"], errors="coerce")
-        df_daily["year"] = df_daily["date"].dt.year
-        df_daily["month"] = df_daily["date"].dt.month
+    df_daily = pd.read_csv(path_daily, parse_dates=["date"])
+    df_daily["provincia"] = df_daily["provincia"].astype(str).str.strip()
+    df_daily["year"] = df_daily["date"].dt.year
+    df_daily["month"] = df_daily["date"].dt.month
 
-    # --- TEXTO ---
-    for df in (df_clean, df_daily, df_events):
-        if "provincia" in df.columns:
-            df["provincia"] = df["provincia"].astype(str).str.strip()
+    df_events = pd.read_csv(path_events, parse_dates=["firms_date"])
+    df_events["provincia"] = df_events["provincia"].astype(str).str.strip()
 
-    return df_clean, df_daily, df_events
+    gdf_prov = gpd.read_file(path_prov_geo)[["NAME_2", "geometry"]]
+    gdf_prov = gdf_prov.rename(columns={"NAME_2": "provincia"})
+
+    return df_clean, df_daily, df_events, gdf_prov, path_clean
 
 
-# =========================================================
-# EJECUCIÓN CONTROLADA
-# =========================================================
-with st.spinner("📡 Cargando datos desde MongoDB..."):
-    try:
-        df_clean, df_daily, df_events = load_data()
-    except Exception as e:
-        st.error(f"❌ Error cargando datos:\n\n{e}")
-        st.stop()
+try:
+    df_clean, df_daily, df_events, gdf_prov, csv_path_used = load_data()
+  #  st.caption(f"📂 Datos cargados desde `{DATA_DIR}` (evento: `{csv_path_used}`).")
+except Exception as e:
+    st.error(f"❌ Error cargando los datos:\n\n{e}")
+    st.stop()
 
-st.success(
-    f"✅ Datos cargados | "
-    f"Evento: {len(df_clean):,} | "
-    f"Provincia–día: {len(df_daily):,}"
-)
-
-# =========================================================
-# GEOMETRÍA (SOLO CUANDO SE NECESITE)
-# =========================================================
-@st.cache_data(show_spinner=True)
-def load_provincias_geo():
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
-    DATA_DIR = os.path.join(PROJECT_ROOT, "data")
-
-    return (
-        gpd.read_file(os.path.join(DATA_DIR, "gadm41_ESP_2.json"))
-        [["NAME_2", "geometry"]]
-        .rename(columns={"NAME_2": "provincia"})
-    )
 
 # =========================================================
 # AUXILIAR: normalizar nombres de provincia
@@ -144,27 +87,26 @@ def norm_nombre(series: pd.Series) -> pd.Series:
         .str.strip()
     )
 
+
 # =========================================================
-# AUXILIAR: histograma agregado
+# AUX: histograma agregado (server-side) para no petar Altair
 # =========================================================
 def hist_counts(series: pd.Series, bins: int = 50) -> pd.DataFrame:
     s = pd.to_numeric(series, errors="coerce").dropna()
     if s.empty:
         return pd.DataFrame(columns=["bin_left", "bin_right", "count"])
-
     counts, edges = np.histogram(s, bins=bins)
-    return pd.DataFrame(
-        {
-            "bin_left": edges[:-1],
-            "bin_right": edges[1:],
-            "count": counts,
-        }
-    )
+    return pd.DataFrame({"bin_left": edges[:-1], "bin_right": edges[1:], "count": counts})
+
 
 # =========================================================
-# AUX: transformación automática FRP
+# AUX: auto-elegir transformación para FRP (para que se entienda sin filtros)
 # =========================================================
 def choose_frp_transform(series: pd.Series):
+    """
+    Decide automáticamente si mostrar FRP en escala normal o log1p.
+    Criterio simple: si hay mucha asimetría (cola larga), usa log1p.
+    """
     s = pd.to_numeric(series, errors="coerce").dropna()
     if s.empty:
         return s, "FRP (MW)", "No hay valores FRP válidos."
@@ -177,37 +119,35 @@ def choose_frp_transform(series: pd.Series):
         return (
             np.log1p(s),
             "FRP (log1p)",
-            "FRP tiene cola larga; se muestra en escala logarítmica.",
+            "FRP suele tener muchos valores pequeños y pocos muy grandes; por eso se muestra en escala log para que se vea la forma.",
         )
     if p50 == 0 and p95 > 0:
         return (
             np.log1p(s),
             "FRP (log1p)",
-            "FRP con muchos ceros; se muestra en escala logarítmica.",
+            "FRP tiene muchos ceros/valores pequeños y algunos grandes; se muestra en escala log para que se entienda mejor.",
         )
-    return s, "FRP (MW)", "FRP en escala normal."
+    return s, "FRP (MW)", "FRP se muestra en escala normal."
+
 
 # =========================================================
-# AUX: bins automáticos + recorte suave
+# ✅ NUEVO: bins automáticos + recorte suave de outliers
 # =========================================================
 def auto_bins(series: pd.Series, min_bins: int = 30, max_bins: int = 60) -> int:
     s = pd.to_numeric(series, errors="coerce").dropna()
     if len(s) < 50:
         return min_bins
-    edges = np.histogram_bin_edges(s, bins="fd")
+    edges = np.histogram_bin_edges(s, bins="fd")  # Freedman–Diaconis
     bins = max(1, len(edges) - 1)
     return int(np.clip(bins, min_bins, max_bins))
 
 
-def clip_quantiles(
-    series: pd.Series, q_low: float = 0.005, q_high: float = 0.995
-) -> pd.Series:
+def clip_quantiles(series: pd.Series, q_low: float = 0.005, q_high: float = 0.995) -> pd.Series:
     s = pd.to_numeric(series, errors="coerce").dropna()
     if s.empty:
         return s
     lo, hi = s.quantile([q_low, q_high]).values
     return s[(s >= lo) & (s <= hi)]
-
 
 
 # =========================================================
@@ -988,6 +928,3 @@ Este gráfico muestra **asociaciones estadísticas** entre variables meteorológ
             .sort_values("effis_area_ha", ascending=False)
         )
         st.dataframe(prov_tot, use_container_width=True)
-
-
-
