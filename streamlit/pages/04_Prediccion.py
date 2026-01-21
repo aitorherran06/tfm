@@ -249,6 +249,7 @@ def cargar_provincias_geometria():
 
 
 
+
 def norm(s):
     return (
         s.astype(str)
@@ -300,4 +301,5 @@ st.caption(
     f"Colores calculados para la fecha **{fecha_seleccionada.strftime('%Y-%m-%d')}**. "
     "Rojo = mayor riesgo relativo según el modelo."
 )
+
 
