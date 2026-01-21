@@ -7,6 +7,7 @@ import numpy as np
 import altair as alt
 import pydeck as pdk
 import geopandas as gpd
+from pymongo import MongoClient
 
 # =========================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -21,58 +22,114 @@ st.title("🔥 Incendios en España – FIRMS + Open-Meteo + EFFIS")
 st.markdown(
     """
 Esta web combina tres fuentes:
-- **FIRMS (NASA, satélite)**: detecciones térmicas (posibles focos).
-- **Open-Meteo**: meteorología (temperatura, humedad, etc.).
-- **EFFIS (Copernicus)**: área quemada e incendios (polígonos).
+- **FIRMS (NASA, satélite)**: detecciones térmicas.
+- **Open-Meteo**: meteorología.
+- **EFFIS (Copernicus)**: área quemada.
 
 **Dos niveles de datos**:
-- **Evento**: cada fila = una detección FIRMS (punto en el mapa).
-- **Provincia–día**: cada fila = una provincia en un día (valores agregados).
+- **Evento**: detecciones individuales.
+- **Provincia–día**: datos agregados.
 """
 )
 
 # =========================================================
-# 📂 CARGA DE DATOS
+# CONEXIÓN A MONGO (SEGURA)
 # =========================================================
-DATA_DIR = r"C:\Users\aitor.herran\Desktop\incendios"  # ajusta si cambia la ruta
+@st.cache_resource(show_spinner=True)
+def conectar_mongo():
+    try:
+        uri = st.secrets["MONGO"]["URI"]
+    except KeyError:
+        st.error("❌ Falta el secret MONGO.URI en Streamlit Cloud")
+        st.stop()
 
+    try:
+        client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+        client.admin.command("ping")
+    except Exception as e:
+        st.error(f"❌ No se pudo conectar a MongoDB:\n{e}")
+        st.stop()
 
+    return client["incendios_espana"]
+
+db = conectar_mongo()
+
+# =========================================================
+# CARGA DE DATOS DESDE MONGO (CONTROLADA)
+# =========================================================
 @st.cache_data(show_spinner=True)
 def load_data():
-    path_clean = os.path.join(DATA_DIR, "fires_openmeteo_effis_clean.csv")
-    path_daily = os.path.join(DATA_DIR, "prov_daily_viz.csv")
-    path_events = os.path.join(DATA_DIR, "events_viz.csv")
-    path_prov_geo = os.path.join(DATA_DIR, "gadm41_ESP_2.json")
+    # --- EVENTOS (LIMITADOS) ---
+    df_clean = pd.DataFrame(
+        list(
+            db["fires_effis_clean"]
+            .find({}, {"_id": 0})
+            .limit(150_000)
+        )
+    )
 
-    df_clean = pd.read_csv(path_clean, low_memory=False)
+    df_events = pd.DataFrame(
+        list(
+            db["events_viz"]
+            .find({}, {"_id": 0})
+            .limit(150_000)
+        )
+    )
+
+    # --- PROVINCIA–DÍA (PEQUEÑO, SE CARGA ENTERO) ---
+    df_daily = pd.DataFrame(
+        list(db["prov_daily_viz"].find({}, {"_id": 0}))
+    )
+
+    # --- FECHAS ---
     if "firms_date" in df_clean.columns:
         df_clean["firms_date"] = pd.to_datetime(df_clean["firms_date"], errors="coerce")
         df_clean["year"] = df_clean["firms_date"].dt.year
         df_clean["date_only"] = df_clean["firms_date"].dt.date
-    if "provincia" in df_clean.columns:
-        df_clean["provincia"] = df_clean["provincia"].astype(str).str.strip()
 
-    df_daily = pd.read_csv(path_daily, parse_dates=["date"])
-    df_daily["provincia"] = df_daily["provincia"].astype(str).str.strip()
-    df_daily["year"] = df_daily["date"].dt.year
-    df_daily["month"] = df_daily["date"].dt.month
+    if "date" in df_daily.columns:
+        df_daily["date"] = pd.to_datetime(df_daily["date"], errors="coerce")
+        df_daily["year"] = df_daily["date"].dt.year
+        df_daily["month"] = df_daily["date"].dt.month
 
-    df_events = pd.read_csv(path_events, parse_dates=["firms_date"])
-    df_events["provincia"] = df_events["provincia"].astype(str).str.strip()
+    # --- TEXTO ---
+    for df in (df_clean, df_daily, df_events):
+        if "provincia" in df.columns:
+            df["provincia"] = df["provincia"].astype(str).str.strip()
 
-    gdf_prov = gpd.read_file(path_prov_geo)[["NAME_2", "geometry"]]
-    gdf_prov = gdf_prov.rename(columns={"NAME_2": "provincia"})
-
-    return df_clean, df_daily, df_events, gdf_prov, path_clean
+    return df_clean, df_daily, df_events
 
 
-try:
-    df_clean, df_daily, df_events, gdf_prov, csv_path_used = load_data()
-  #  st.caption(f"📂 Datos cargados desde `{DATA_DIR}` (evento: `{csv_path_used}`).")
-except Exception as e:
-    st.error(f"❌ Error cargando los datos:\n\n{e}")
-    st.stop()
+# =========================================================
+# EJECUCIÓN CONTROLADA
+# =========================================================
+with st.spinner("📡 Cargando datos desde MongoDB..."):
+    try:
+        df_clean, df_daily, df_events = load_data()
+    except Exception as e:
+        st.error(f"❌ Error cargando datos:\n\n{e}")
+        st.stop()
 
+st.success(
+    f"✅ Datos cargados | "
+    f"Evento: {len(df_clean):,} | "
+    f"Provincia–día: {len(df_daily):,}"
+)
+
+# =========================================================
+# GEOMETRÍA (SOLO CUANDO SE NECESITE)
+# =========================================================
+@st.cache_data(show_spinner=True)
+def load_provincias_geo():
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+    DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+
+    return (
+        gpd.read_file(os.path.join(DATA_DIR, "gadm41_ESP_2.json"))
+        [["NAME_2", "geometry"]]
+        .rename(columns={"NAME_2": "provincia"})
+    )
 
 # =========================================================
 # AUXILIAR: normalizar nombres de provincia
@@ -87,16 +144,23 @@ def norm_nombre(series: pd.Series) -> pd.Series:
         .str.strip()
     )
 
-
 # =========================================================
-# AUX: histograma agregado (server-side) para no petar Altair
+# AUXILIAR: histograma agregado
 # =========================================================
 def hist_counts(series: pd.Series, bins: int = 50) -> pd.DataFrame:
     s = pd.to_numeric(series, errors="coerce").dropna()
     if s.empty:
         return pd.DataFrame(columns=["bin_left", "bin_right", "count"])
+
     counts, edges = np.histogram(s, bins=bins)
-    return pd.DataFrame({"bin_left": edges[:-1], "bin_right": edges[1:], "count": counts})
+    return pd.DataFrame(
+        {
+            "bin_left": edges[:-1],
+            "bin_right": edges[1:],
+            "count": counts,
+        }
+    )
+
 
 
 # =========================================================
@@ -928,3 +992,4 @@ Este gráfico muestra **asociaciones estadísticas** entre variables meteorológ
             .sort_values("effis_area_ha", ascending=False)
         )
         st.dataframe(prov_tot, use_container_width=True)
+
