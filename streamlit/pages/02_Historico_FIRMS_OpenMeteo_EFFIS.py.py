@@ -7,16 +7,7 @@ import numpy as np
 import altair as alt
 import pydeck as pdk
 import geopandas as gpd
-
-# =========================================================
-# CONFIGURACIÓN DE RUTAS (PORTABLE – LOCAL + STREAMLIT CLOUD)
-# =========================================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Raíz del proyecto (tfm/)
-PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
-
-DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+from pymongo import MongoClient
 
 # =========================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -42,43 +33,68 @@ Esta web combina tres fuentes:
 )
 
 # =========================================================
-# 📂 CARGA DE DATOS
+# CONEXIÓN A MONGO
+# =========================================================
+@st.cache_resource(show_spinner=True)
+def conectar_mongo():
+    uri = st.secrets["MONGO"]["URI"]
+    client = MongoClient(uri)
+    return client["incendios_espana"]
+
+db = conectar_mongo()
+
+# =========================================================
+# 📂 CARGA DE DATOS (DESDE MONGO)
 # =========================================================
 @st.cache_data(show_spinner=True)
 def load_data():
-    path_clean = os.path.join(DATA_DIR, "fires_openmeteo_effis_clean.csv")
-    path_daily = os.path.join(DATA_DIR, "prov_daily_viz.csv")
-    path_events = os.path.join(DATA_DIR, "events_viz.csv")
-    path_prov_geo = os.path.join(DATA_DIR, "gadm41_ESP_2.json")
+    # -------- MONGO --------
+    df_clean = pd.DataFrame(
+        list(db["fires_effis_clean"].find({}, {"_id": 0}))
+    )
 
-    df_clean = pd.read_csv(path_clean, low_memory=False)
+    df_daily = pd.DataFrame(
+        list(db["prov_daily_viz"].find({}, {"_id": 0}))
+    )
+
+    df_events = pd.DataFrame(
+        list(db["events_viz"].find({}, {"_id": 0}))
+    )
+
+    # -------- FECHAS --------
     if "firms_date" in df_clean.columns:
         df_clean["firms_date"] = pd.to_datetime(df_clean["firms_date"], errors="coerce")
         df_clean["year"] = df_clean["firms_date"].dt.year
         df_clean["date_only"] = df_clean["firms_date"].dt.date
-    if "provincia" in df_clean.columns:
-        df_clean["provincia"] = df_clean["provincia"].astype(str).str.strip()
 
-    df_daily = pd.read_csv(path_daily, parse_dates=["date"])
-    df_daily["provincia"] = df_daily["provincia"].astype(str).str.strip()
-    df_daily["year"] = df_daily["date"].dt.year
-    df_daily["month"] = df_daily["date"].dt.month
+    if "date" in df_daily.columns:
+        df_daily["date"] = pd.to_datetime(df_daily["date"], errors="coerce")
+        df_daily["year"] = df_daily["date"].dt.year
+        df_daily["month"] = df_daily["date"].dt.month
 
-    df_events = pd.read_csv(path_events, parse_dates=["firms_date"])
-    df_events["provincia"] = df_events["provincia"].astype(str).str.strip()
+    # -------- TEXTO --------
+    for df in (df_clean, df_daily, df_events):
+        if "provincia" in df.columns:
+            df["provincia"] = df["provincia"].astype(str).str.strip()
 
-    gdf_prov = gpd.read_file(path_prov_geo)[["NAME_2", "geometry"]]
-    gdf_prov = gdf_prov.rename(columns={"NAME_2": "provincia"})
+    # -------- GEOMETRÍA (DESDE GIT) --------
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
+    DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 
-    return df_clean, df_daily, df_events, gdf_prov, path_clean
+    gdf_prov = gpd.read_file(
+        os.path.join(DATA_DIR, "gadm41_ESP_2.json")
+    )[["NAME_2", "geometry"]].rename(columns={"NAME_2": "provincia"})
+
+    return df_clean, df_daily, df_events, gdf_prov
 
 
+# -------- EJECUCIÓN --------
 try:
-    df_clean, df_daily, df_events, gdf_prov, csv_path_used = load_data()
+    df_clean, df_daily, df_events, gdf_prov = load_data()
 except Exception as e:
     st.error(f"❌ Error cargando los datos:\n\n{e}")
     st.stop()
-
 
 # =========================================================
 # AUXILIAR: normalizar nombres de provincia
@@ -934,4 +950,5 @@ Este gráfico muestra **asociaciones estadísticas** entre variables meteorológ
             .sort_values("effis_area_ha", ascending=False)
         )
         st.dataframe(prov_tot, use_container_width=True)
+
 
