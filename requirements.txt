@@ -11,3 +11,4 @@ shapely
 pyproj
 fiona
 scikit-learn
+h3
