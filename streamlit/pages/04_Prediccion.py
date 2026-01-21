@@ -227,21 +227,26 @@ st.subheader("🗺️ Mapa de riesgo medio por provincia")
 
 @st.cache_data(show_spinner=True)
 def cargar_provincias_geometria():
-    gdf = gpd.read_file(os.path.join(DATA_DIR, "gadm41_ESP_2.json"))[["NAME_2", "geometry"]]
+    shp_path = os.path.join(DATA_DIR, "gadm41_ESP_2.shp")
+
+    if not os.path.exists(shp_path):
+        raise FileNotFoundError(f"No se encuentra el shapefile: {shp_path}")
+
+    gdf = gpd.read_file(shp_path)[["NAME_2", "geometry"]]
     gdf = gdf.rename(columns={"NAME_2": "provincia"})
 
-    def norm(s):
-        return (
-            s.astype(str)
-            .str.normalize("NFKD")
-            .str.encode("ascii", errors="ignore")
-            .str.decode("utf-8")
-            .str.lower()
-            .str.strip()
-        )
+    gdf["provincia_norm"] = (
+        gdf["provincia"]
+        .astype(str)
+        .str.normalize("NFKD")
+        .str.encode("ascii", errors="ignore")
+        .str.decode("utf-8")
+        .str.lower()
+        .str.strip()
+    )
 
-    gdf["provincia_norm"] = norm(gdf["provincia"])
     return gdf
+
 
 
 def norm(s):
@@ -295,3 +300,4 @@ st.caption(
     f"Colores calculados para la fecha **{fecha_seleccionada.strftime('%Y-%m-%d')}**. "
     "Rojo = mayor riesgo relativo según el modelo."
 )
+
