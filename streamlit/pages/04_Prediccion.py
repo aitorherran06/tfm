@@ -12,7 +12,9 @@ import pydeck as pdk
 # RUTAS BASE (PORTABLES PARA STREAMLIT CLOUD)
 # =========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "..", "data")
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
+DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+
 
 # =========================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -250,6 +252,7 @@ def cargar_provincias_geometria():
 
 
 
+
 def norm(s):
     return (
         s.astype(str)
@@ -301,5 +304,6 @@ st.caption(
     f"Colores calculados para la fecha **{fecha_seleccionada.strftime('%Y-%m-%d')}**. "
     "Rojo = mayor riesgo relativo según el modelo."
 )
+
 
 
