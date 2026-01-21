@@ -1,3 +1,6 @@
+# =========================================================
+# IMPORTS
+# =========================================================
 import os
 import json
 
@@ -5,9 +8,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
-import pydeck as pdk   # ← ESTA LÍNEA FALTABA
+import pydeck as pdk
 import geopandas as gpd
 from pymongo import MongoClient
+
 
 # =========================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -23,11 +27,12 @@ st.markdown(
     """
 Datos cargados desde **MongoDB Atlas**:
 
-- **fires_effis_clean** → eventos FIRMS limpios
-- **events_viz** → eventos enriquecidos
-- **prov_daily_viz** → agregación provincia–día
+- **fires_effis_clean** → eventos FIRMS limpios  
+- **events_viz** → eventos enriquecidos  
+- **prov_daily_viz** → agregación provincia–día  
 """
 )
+
 
 # =========================================================
 # CONEXIÓN A MONGO (SEGURA)
@@ -53,79 +58,79 @@ def conectar_mongo():
 
 db = conectar_mongo()
 
+
 # =========================================================
-# CARGA DE DATOS DESDE MONGO (ROBUSTA)
+# CARGA DE DATOS DESDE MONGO (SIN LÍMITES)
 # =========================================================
 @st.cache_data(show_spinner=True)
 def load_data():
-    # -----------------------------
-    # EVENTOS LIMPIOS
-    # -----------------------------
+    # EVENTOS FIRMS LIMPIOS
     df_clean = pd.DataFrame(
-        list(
-            db["fires_effis_clean"]
-            .find({}, {"_id": 0})
-            .limit(150_000)
-        )
+        list(db["fires_effis_clean"].find({}, {"_id": 0}))
     )
 
-    # -----------------------------
     # EVENTOS ENRIQUECIDOS
-    # -----------------------------
     df_events = pd.DataFrame(
-        list(
-            db["events_viz"]
-            .find({}, {"_id": 0})
-            .limit(150_000)
-        )
+        list(db["events_viz"].find({}, {"_id": 0}))
     )
 
-    # -----------------------------
     # PROVINCIA–DÍA
-    # -----------------------------
     df_daily = pd.DataFrame(
-        list(
-            db["prov_daily_viz"]
-            .find({}, {"_id": 0})
-        )
+        list(db["prov_daily_viz"].find({}, {"_id": 0}))
     )
 
-    # =====================================================
-    # CONVERSIÓN DE FECHAS (CRÍTICO)
-    # =====================================================
+    # ---------------- FECHAS ----------------
     if "firms_date" in df_clean.columns:
-        df_clean["firms_date"] = pd.to_datetime(
-            df_clean["firms_date"], errors="coerce"
-        )
+        df_clean["firms_date"] = pd.to_datetime(df_clean["firms_date"], errors="coerce")
         df_clean = df_clean.dropna(subset=["firms_date"])
         df_clean["year"] = df_clean["firms_date"].dt.year
 
     if "firms_date" in df_events.columns:
-        df_events["firms_date"] = pd.to_datetime(
-            df_events["firms_date"], errors="coerce"
-        )
+        df_events["firms_date"] = pd.to_datetime(df_events["firms_date"], errors="coerce")
         df_events = df_events.dropna(subset=["firms_date"])
 
     if "date" in df_daily.columns:
-        df_daily["date"] = pd.to_datetime(
-            df_daily["date"], errors="coerce"
-        )
+        df_daily["date"] = pd.to_datetime(df_daily["date"], errors="coerce")
         df_daily = df_daily.dropna(subset=["date"])
         df_daily["year"] = df_daily["date"].dt.year
         df_daily["month"] = df_daily["date"].dt.month
 
-    # =====================================================
-    # LIMPIEZA DE TEXTO
-    # =====================================================
+    # ---------------- TEXTO ----------------
     for df in (df_clean, df_events, df_daily):
         if "provincia" in df.columns:
-            df["provincia"] = (
-                df["provincia"]
-                .astype(str)
-                .str.strip()
-            )
+            df["provincia"] = df["provincia"].astype(str).str.strip()
 
     return df_clean, df_daily, df_events
+
+
+# =========================================================
+# GEOMETRÍA DE PROVINCIAS (DEFINIDA ANTES DE USARSE)
+# =========================================================
+@st.cache_data(show_spinner=True)
+def load_provincias_geo():
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
+    DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+
+    return (
+        gpd.read_file(os.path.join(DATA_DIR, "gadm41_ESP_2.json"))
+        [["NAME_2", "geometry"]]
+        .rename(columns={"NAME_2": "provincia"})
+    )
+
+
+# =========================================================
+# AUXILIAR: normalizar nombres de provincia
+# =========================================================
+def norm_nombre(series: pd.Series) -> pd.Series:
+    return (
+        series.astype(str)
+        .str.normalize("NFKD")
+        .str.encode("ascii", errors="ignore")
+        .str.decode("utf-8")
+        .str.lower()
+        .str.strip()
+    )
 
 
 # =========================================================
@@ -144,6 +149,16 @@ st.success(
     f"- Eventos viz: {len(df_events):,}\n"
     f"- Provincia–día: {len(df_daily):,}"
 )
+
+with st.spinner("🗺️ Cargando geometría de provincias..."):
+    try:
+        gdf_prov = load_provincias_geo()
+        gdf_prov["provincia_norm"] = norm_nombre(gdf_prov["provincia"])
+    except Exception as e:
+        st.error(f"❌ Error cargando geometría de provincias:\n{e}")
+        st.stop()
+
+st.success("🗺️ Geometría de provincias cargada correctamente")
 
 
 # =========================================================
