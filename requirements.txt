@@ -10,3 +10,4 @@ geopandas
 shapely
 pyproj
 fiona
+scikit-learn
