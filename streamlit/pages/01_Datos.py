@@ -8,16 +8,20 @@ from pymongo import MongoClient
 import geopandas as gpd  # Para Copernicus
 
 # =========================================================
-# CONFIGURACIÓN DE RUTAS (PORTABLE)
+# CONFIGURACIÓN DE RUTAS (PORTABLE – LOCAL + STREAMLIT CLOUD)
 # =========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DATA_DIR = os.path.join(BASE_DIR, "..", "data")
-COP_DIR = os.path.join(BASE_DIR, "..", "data-copernicus")
+# Raíz del proyecto (tfm/)
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
+
+DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+COP_DIR = os.path.join(PROJECT_ROOT, "data-copernicus")
 
 CSV_FIRMS = os.path.join(DATA_DIR, "firms_spain_provincia.csv")
 OPENMETEO_CSV = os.path.join(DATA_DIR, "openmeteo_historico.csv")
 COPERNICUS_SHP = os.path.join(COP_DIR, "modis.ba.poly.shp")
+
 
 # =========================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -844,3 +848,4 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
