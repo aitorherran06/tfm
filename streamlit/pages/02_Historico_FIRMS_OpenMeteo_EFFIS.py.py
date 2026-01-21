@@ -9,10 +9,14 @@ import pydeck as pdk
 import geopandas as gpd
 
 # =========================================================
-# CONFIGURACIÓN DE RUTAS (PORTABLE)
+# CONFIGURACIÓN DE RUTAS (PORTABLE – LOCAL + STREAMLIT CLOUD)
 # =========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "..", "data")
+
+# Raíz del proyecto (tfm/)
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
+
+DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 
 # =========================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -930,3 +934,4 @@ Este gráfico muestra **asociaciones estadísticas** entre variables meteorológ
             .sort_values("effis_area_ha", ascending=False)
         )
         st.dataframe(prov_tot, use_container_width=True)
+
