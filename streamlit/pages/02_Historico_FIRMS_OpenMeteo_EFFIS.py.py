@@ -1,12 +1,6 @@
 import os
-import json
-
 import streamlit as st
 import pandas as pd
-import numpy as np
-import altair as alt
-import pydeck as pdk
-import geopandas as gpd
 from pymongo import MongoClient
 
 # =========================================================
@@ -21,14 +15,11 @@ st.title("🔥 Incendios en España – FIRMS + Open-Meteo + EFFIS")
 
 st.markdown(
     """
-Esta web combina tres fuentes:
-- **FIRMS (NASA, satélite)**: detecciones térmicas.
-- **Open-Meteo**: meteorología.
-- **EFFIS (Copernicus)**: área quemada.
+Datos cargados desde **MongoDB Atlas**:
 
-**Dos niveles de datos**:
-- **Evento**: detecciones individuales.
-- **Provincia–día**: datos agregados.
+- **fires_effis_clean** → eventos FIRMS limpios
+- **events_viz** → eventos enriquecidos
+- **prov_daily_viz** → agregación provincia–día
 """
 )
 
@@ -37,14 +28,15 @@ Esta web combina tres fuentes:
 # =========================================================
 @st.cache_resource(show_spinner=True)
 def conectar_mongo():
-    try:
-        uri = st.secrets["MONGO"]["URI"]
-    except KeyError:
-        st.error("❌ Falta el secret MONGO.URI en Streamlit Cloud")
+    if "MONGO" not in st.secrets or "URI" not in st.secrets["MONGO"]:
+        st.error("❌ Falta configurar MONGO.URI en Streamlit Cloud")
         st.stop()
 
     try:
-        client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+        client = MongoClient(
+            st.secrets["MONGO"]["URI"],
+            serverSelectionTimeoutMS=5000,
+        )
         client.admin.command("ping")
     except Exception as e:
         st.error(f"❌ No se pudo conectar a MongoDB:\n{e}")
@@ -52,14 +44,17 @@ def conectar_mongo():
 
     return client["incendios_espana"]
 
+
 db = conectar_mongo()
 
 # =========================================================
-# CARGA DE DATOS DESDE MONGO (CONTROLADA)
+# CARGA DE DATOS DESDE MONGO (ROBUSTA)
 # =========================================================
 @st.cache_data(show_spinner=True)
 def load_data():
-    # --- EVENTOS (LIMITADOS) ---
+    # -----------------------------
+    # EVENTOS LIMPIOS
+    # -----------------------------
     df_clean = pd.DataFrame(
         list(
             db["fires_effis_clean"]
@@ -68,6 +63,9 @@ def load_data():
         )
     )
 
+    # -----------------------------
+    # EVENTOS ENRIQUECIDOS
+    # -----------------------------
     df_events = pd.DataFrame(
         list(
             db["events_viz"]
@@ -76,26 +74,50 @@ def load_data():
         )
     )
 
-    # --- PROVINCIA–DÍA (PEQUEÑO, SE CARGA ENTERO) ---
+    # -----------------------------
+    # PROVINCIA–DÍA
+    # -----------------------------
     df_daily = pd.DataFrame(
-        list(db["prov_daily_viz"].find({}, {"_id": 0}))
+        list(
+            db["prov_daily_viz"]
+            .find({}, {"_id": 0})
+        )
     )
 
-    # --- FECHAS ---
+    # =====================================================
+    # CONVERSIÓN DE FECHAS (CRÍTICO)
+    # =====================================================
     if "firms_date" in df_clean.columns:
-        df_clean["firms_date"] = pd.to_datetime(df_clean["firms_date"], errors="coerce")
+        df_clean["firms_date"] = pd.to_datetime(
+            df_clean["firms_date"], errors="coerce"
+        )
+        df_clean = df_clean.dropna(subset=["firms_date"])
         df_clean["year"] = df_clean["firms_date"].dt.year
-        df_clean["date_only"] = df_clean["firms_date"].dt.date
+
+    if "firms_date" in df_events.columns:
+        df_events["firms_date"] = pd.to_datetime(
+            df_events["firms_date"], errors="coerce"
+        )
+        df_events = df_events.dropna(subset=["firms_date"])
 
     if "date" in df_daily.columns:
-        df_daily["date"] = pd.to_datetime(df_daily["date"], errors="coerce")
+        df_daily["date"] = pd.to_datetime(
+            df_daily["date"], errors="coerce"
+        )
+        df_daily = df_daily.dropna(subset=["date"])
         df_daily["year"] = df_daily["date"].dt.year
         df_daily["month"] = df_daily["date"].dt.month
 
-    # --- TEXTO ---
-    for df in (df_clean, df_daily, df_events):
+    # =====================================================
+    # LIMPIEZA DE TEXTO
+    # =====================================================
+    for df in (df_clean, df_events, df_daily):
         if "provincia" in df.columns:
-            df["provincia"] = df["provincia"].astype(str).str.strip()
+            df["provincia"] = (
+                df["provincia"]
+                .astype(str)
+                .str.strip()
+            )
 
     return df_clean, df_daily, df_events
 
@@ -111,10 +133,12 @@ with st.spinner("📡 Cargando datos desde MongoDB..."):
         st.stop()
 
 st.success(
-    f"✅ Datos cargados | "
-    f"Evento: {len(df_clean):,} | "
-    f"Provincia–día: {len(df_daily):,}"
+    f"✅ Datos cargados correctamente\n\n"
+    f"- Eventos clean: {len(df_clean):,}\n"
+    f"- Eventos viz: {len(df_events):,}\n"
+    f"- Provincia–día: {len(df_daily):,}"
 )
+
 
 # =========================================================
 # GEOMETRÍA (SOLO CUANDO SE NECESITE)
@@ -992,4 +1016,5 @@ Este gráfico muestra **asociaciones estadísticas** entre variables meteorológ
             .sort_values("effis_area_ha", ascending=False)
         )
         st.dataframe(prov_tot, use_container_width=True)
+
 
