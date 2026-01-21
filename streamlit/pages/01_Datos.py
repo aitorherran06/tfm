@@ -8,6 +8,18 @@ from pymongo import MongoClient
 import geopandas as gpd  # Para Copernicus
 
 # =========================================================
+# CONFIGURACIÓN DE RUTAS (PORTABLE)
+# =========================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+DATA_DIR = os.path.join(BASE_DIR, "..", "data")
+COP_DIR = os.path.join(BASE_DIR, "..", "data-copernicus")
+
+CSV_FIRMS = os.path.join(DATA_DIR, "firms_spain_provincia.csv")
+OPENMETEO_CSV = os.path.join(DATA_DIR, "openmeteo_historico.csv")
+COPERNICUS_SHP = os.path.join(COP_DIR, "modis.ba.poly.shp")
+
+# =========================================================
 # CONFIGURACIÓN DE PÁGINA
 # =========================================================
 st.set_page_config(
@@ -29,12 +41,6 @@ explorar rápidamente la información de cada fuente:
 """
 )
 
-DATA_DIR = r"C:\Users\aitor.herran\Desktop\incendios"  # ajusta si cambia la ruta
-
-CSV_FIRMS = os.path.join(DATA_DIR, "firms_spain.csv")
-COPERNICUS_SHP = os.path.join(DATA_DIR, "copernicus", "modis.ba.poly.shp")
-OPENMETEO_CSV = os.path.join(DATA_DIR, "openmeteo_historico.csv")
-
 # =========================================================
 # TABS PRINCIPALES
 # =========================================================
@@ -55,31 +61,19 @@ OPENMETEO_CSV = os.path.join(DATA_DIR, "openmeteo_historico.csv")
 )
 
 # =========================================================
-# 1) TAB FIRMS (firms_spain.csv)
+# 1) TAB FIRMS
 # =========================================================
 with tab_firms:
     st.header("🛰️ FIRMS – Detecciones históricas de incendios")
-
-    st.markdown(
-        """
-FIRMS (Fire Information for Resource Management System) es un servicio de **NASA**
-que detecta puntos calientes usando satélites.  
-En este dataset, **cada fila representa una detección satelital individual** 
-(posible foco de incendio) localizada en España.
-"""
-    )
 
     @st.cache_data(show_spinner=True)
     def load_firms(path: str) -> pd.DataFrame:
         df_ = pd.read_csv(path, low_memory=False)
 
-        # Normalizamos una columna de fecha común: firms_date
         if "firms_date" in df_.columns:
             df_["firms_date"] = pd.to_datetime(df_["firms_date"], errors="coerce")
         elif "acq_date" in df_.columns:
             df_["firms_date"] = pd.to_datetime(df_["acq_date"], errors="coerce")
-        elif "date" in df_.columns:
-            df_["firms_date"] = pd.to_datetime(df_["date"], errors="coerce")
         else:
             df_["firms_date"] = pd.NaT
 
@@ -88,15 +82,14 @@ En este dataset, **cada fila representa una detección satelital individual**
 
         return df_
 
-    # ---------- Carga base (sin filtros) ----------
     try:
         df_firms_full = load_firms(CSV_FIRMS)
     except Exception as e:
-        st.error(f"❌ No se pudo cargar el dataset FIRMS: {e}")
+        st.error(f"❌ No se pudo cargar FIRMS: {e}")
         st.stop()
 
-    # st.caption(f"📂 Archivo cargado: `{CSV_FIRMS}`")
-    st.success(f"Registros FIRMS (totales): **{len(df_firms_full):,}**")
+    st.success(f"Registros FIRMS: **{len(df_firms_full):,}**")
+
 
     if df_firms_full["firms_date"].notna().any():
         min_date_global = df_firms_full["firms_date"].min()

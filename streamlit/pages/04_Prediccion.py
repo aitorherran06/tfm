@@ -9,6 +9,12 @@ import geopandas as gpd
 import pydeck as pdk
 
 # =========================================================
+# RUTAS BASE (PORTABLES PARA STREAMLIT CLOUD)
+# =========================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "..", "data")
+
+# =========================================================
 # CONFIGURACIÓN DE PÁGINA
 # =========================================================
 st.set_page_config(
@@ -33,6 +39,7 @@ y un modelo de **Random Forest** para estimar la probabilidad de que haya
 El umbral actual de alerta está fijado en **0.60**.
 """
 )
+
 # =========================================================
 # 1) CARGA DE SECRETS (Mongo y modelo)
 # =========================================================
@@ -44,24 +51,22 @@ except Exception:
     st.stop()
 
 # =========================================================
-# 2) CARGA DEL MODELO (cache_resource)
+# 2) CARGA DEL MODELO
 # =========================================================
 @st.cache_resource(show_spinner=True)
 def cargar_modelo():
-    modelo = joblib.load(MODEL_PATH)
-    return modelo
+    return joblib.load(MODEL_PATH)
 
 modelo = cargar_modelo()
 
 # =========================================================
-# 3) CONEXIÓN A MONGO (cache_resource)
+# 3) CONEXIÓN A MONGO
 # =========================================================
 @st.cache_resource(show_spinner=True)
 def conectar_mongo():
     client = MongoClient(MONGO_URI)
     db = client["incendios_espana"]
-    col = db["aemet_predicciones"]
-    return col
+    return db["aemet_predicciones"]
 
 col_aemet = conectar_mongo()
 
@@ -69,7 +74,6 @@ col_aemet = conectar_mongo()
 # 4) CARGA Y TRANSFORMACIÓN AEMET → DATAFRAME
 # =========================================================
 def extraer_max(arr, campo=None):
-    """Extrae máximo de array de dicts o lista de números."""
     if not isinstance(arr, list) or len(arr) == 0:
         return np.nan
     if campo and isinstance(arr[0], dict):
@@ -87,7 +91,7 @@ def cargar_aemet_df():
     for d in docs:
         fila = {
             "provincia": d.get("provincia"),
-            "fecha": pd.to_datetime(d.get("fecha"), errors="coerce")
+            "fecha": pd.to_datetime(d.get("fecha"), errors="coerce"),
         }
 
         temp = d.get("temperatura", {}) or {}
@@ -106,13 +110,12 @@ def cargar_aemet_df():
     df = pd.DataFrame(filas)
     df["provincia"] = df["provincia"].astype(str)
     df = df.dropna(subset=["fecha"])
-
     return df
 
 
 df_aemet = cargar_aemet_df()
 
-if len(df_aemet) == 0:
+if df_aemet.empty:
     st.error("❌ No hay datos en MongoDB para `aemet_predicciones`.")
     st.stop()
 
@@ -132,7 +135,6 @@ feat_cols = [
 
 df_pred = df_aemet.copy()
 
-# Convertir a numérico
 for c in feat_cols:
     df_pred[c] = pd.to_numeric(df_pred[c], errors="coerce")
 
@@ -142,16 +144,11 @@ if df_pred.empty:
     st.error("❌ Tras limpiar datos, no quedan filas válidas para el modelo.")
     st.stop()
 
-# Predicciones
-probas = modelo.predict_proba(df_pred[feat_cols])[:, 1]
-df_pred["prob_riesgo_alto"] = probas
-
-# Umbral de alerta
-umbral_alerta = 0.60
-df_pred["alerta_incendio"] = (df_pred["prob_riesgo_alto"] >= umbral_alerta).astype(int)
+df_pred["prob_riesgo_alto"] = modelo.predict_proba(df_pred[feat_cols])[:, 1]
+df_pred["alerta_incendio"] = (df_pred["prob_riesgo_alto"] >= 0.60).astype(int)
 
 # =========================================================
-# 6) FILTRO POR FECHA (SOLO UNO → visión de predicción diaria)
+# 6) FILTRO POR FECHA
 # =========================================================
 st.sidebar.header("📅 Filtros de predicción")
 
@@ -171,40 +168,26 @@ st.markdown(
     f"### 🔍 Predicción seleccionada para el día **{fecha_seleccionada.strftime('%Y-%m-%d')}**"
 )
 
-if df_f.empty:
-    st.warning("No hay predicciones para la fecha seleccionada.")
-    st.stop()
-
 # =========================================================
-# 7) KPIs RÁPIDOS
+# 7) KPIs
 # =========================================================
 c1, c2, c3 = st.columns(3)
 
 c1.metric("Provincias con predicción", df_f["provincia"].nunique())
+c2.metric("Provincias en alerta (prob ≥ 0.60)", int(df_f["alerta_incendio"].sum()))
+c3.metric("Probabilidad media nacional", f"{df_f['prob_riesgo_alto'].mean():.3f}")
 
-c2.metric(
-    "Provincias en alerta (prob ≥ 0.60)",
-    int(df_f["alerta_incendio"].sum())
-)
-
-c3.metric(
-    "Probabilidad media nacional",
-    f"{df_f['prob_riesgo_alto'].mean():.3f}"
-)
-
-st.caption(
-    "El umbral de alerta se ha fijado en **0.60**: por encima de este valor se considera *riesgo alto*."
-)
+st.caption("El umbral de alerta se ha fijado en **0.60**.")
 
 # =========================================================
-# 8) RANKING POR PROVINCIA
+# 8) RANKING + GRÁFICO
 # =========================================================
 st.subheader("🏅 Ranking de provincias por probabilidad de riesgo alto")
 
 agg_prov = (
     df_f.groupby("provincia", as_index=False)
     .agg(
-        prob_media=("prob_riesgo_alto", "mean"),   # aquí será el valor del día
+        prob_media=("prob_riesgo_alto", "mean"),
         prob_max=("prob_riesgo_alto", "max"),
         alerta=("alerta_incendio", "max"),
     )
@@ -213,37 +196,25 @@ agg_prov = (
 
 st.dataframe(agg_prov, use_container_width=True)
 
-n_provincias = len(agg_prov)
-n_top = min(20, n_provincias)
-
-st.markdown(f"### 📈 Probabilidad de riesgo alto por provincia (top {n_top})")
-
-df_top = agg_prov.head(n_top)
-
 chart = (
-    alt.Chart(df_top)
+    alt.Chart(agg_prov)
     .mark_bar()
     .encode(
         x=alt.X("prob_media:Q", title="Probabilidad de riesgo alto"),
-        y=alt.Y(
-            "provincia:N",
-            sort="-x",
-            title="Provincia",
-            axis=alt.Axis(labelOverlap=False),
-        ),
+        y=alt.Y("provincia:N", sort="-x", title="Provincia"),
         color=alt.condition(
             alt.datum.alerta == 1,
-            alt.value("#ff4b4b"),  # en alerta
-            alt.value("#1f77b4"),  # sin alerta
+            alt.value("#ff4b4b"),
+            alt.value("#1f77b4"),
         ),
         tooltip=[
             "provincia:N",
-            alt.Tooltip("prob_media:Q", format=".3f", title="Prob. media"),
-            alt.Tooltip("prob_max:Q", format=".3f", title="Prob. máx."),
+            alt.Tooltip("prob_media:Q", format=".3f"),
+            alt.Tooltip("prob_max:Q", format=".3f"),
             "alerta:Q",
         ],
     )
-    .properties(height=n_top * 25)
+    .properties(height=min(600, len(agg_prov) * 25))
 )
 
 st.altair_chart(chart, use_container_width=True)
@@ -252,13 +223,11 @@ st.altair_chart(chart, use_container_width=True)
 # 9) MAPA DE RIESGO POR PROVINCIA
 # =========================================================
 st.markdown("---")
-st.subheader("🗺️ Mapa de riesgo medio por provincia (día seleccionado)")
-
+st.subheader("🗺️ Mapa de riesgo medio por provincia")
 
 @st.cache_data(show_spinner=True)
 def cargar_provincias_geometria():
-    GADM_PATH = r"C:\Users\aitor.herran\Desktop\incendios\gadm41_ESP_2.json"
-    gdf = gpd.read_file(GADM_PATH)[["NAME_2", "geometry"]]
+    gdf = gpd.read_file(os.path.join(DATA_DIR, "gadm41_ESP_2.json"))[["NAME_2", "geometry"]]
     gdf = gdf.rename(columns={"NAME_2": "provincia"})
 
     def norm(s):
@@ -275,9 +244,6 @@ def cargar_provincias_geometria():
     return gdf
 
 
-gdf = cargar_provincias_geometria()
-
-
 def norm(s):
     return (
         s.astype(str)
@@ -289,39 +255,34 @@ def norm(s):
     )
 
 
-agg_prov_mapa = agg_prov.copy()
-agg_prov_mapa["provincia_norm"] = norm(agg_prov_mapa["provincia"])
+gdf = cargar_provincias_geometria()
+agg_prov["provincia_norm"] = norm(agg_prov["provincia"])
 
 gdfm = gdf.merge(
-    agg_prov_mapa[["provincia_norm", "prob_media"]],
+    agg_prov[["provincia_norm", "prob_media"]],
     on="provincia_norm",
     how="left",
-)
+).fillna({"prob_media": 0})
 
-gdfm["prob_media"] = gdfm["prob_media"].fillna(0)
 gdfm = gdfm.to_crs(epsg=4326)
 
 max_prob = gdfm["prob_media"].max()
 gdfm["prob_norm"] = gdfm["prob_media"] / max_prob if max_prob > 0 else 0
 
-geojson = gdfm.__geo_interface__
-
 layer = pdk.Layer(
     "GeoJsonLayer",
-    data=geojson,
+    data=gdfm.__geo_interface__,
     pickable=True,
-    stroked=True,
     filled=True,
+    stroked=True,
     get_fill_color="[255 * prob_norm, (1 - prob_norm) * 255, 0, 150]",
     get_line_color=[50, 50, 50],
     line_width_min_pixels=1,
 )
 
-view = pdk.ViewState(latitude=40.0, longitude=-3.7, zoom=5)
-
 deck = pdk.Deck(
     layers=[layer],
-    initial_view_state=view,
+    initial_view_state=pdk.ViewState(latitude=40.0, longitude=-3.7, zoom=5),
     tooltip={
         "html": "<b>{provincia}</b><br/>Probabilidad media: {prob_media}",
         "style": {"color": "white"},
@@ -332,5 +293,5 @@ st.pydeck_chart(deck)
 
 st.caption(
     f"Colores calculados para la fecha **{fecha_seleccionada.strftime('%Y-%m-%d')}**. "
-    "Rojo = mayor riesgo relativo según las predicciones del modelo."
+    "Rojo = mayor riesgo relativo según el modelo."
 )

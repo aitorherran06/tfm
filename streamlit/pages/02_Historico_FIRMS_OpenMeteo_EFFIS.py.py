@@ -9,6 +9,12 @@ import pydeck as pdk
 import geopandas as gpd
 
 # =========================================================
+# CONFIGURACIÓN DE RUTAS (PORTABLE)
+# =========================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "..", "data")
+
+# =========================================================
 # CONFIGURACIÓN DE PÁGINA
 # =========================================================
 st.set_page_config(
@@ -34,9 +40,6 @@ Esta web combina tres fuentes:
 # =========================================================
 # 📂 CARGA DE DATOS
 # =========================================================
-DATA_DIR = r"C:\Users\aitor.herran\Desktop\incendios"  # ajusta si cambia la ruta
-
-
 @st.cache_data(show_spinner=True)
 def load_data():
     path_clean = os.path.join(DATA_DIR, "fires_openmeteo_effis_clean.csv")
@@ -68,7 +71,6 @@ def load_data():
 
 try:
     df_clean, df_daily, df_events, gdf_prov, csv_path_used = load_data()
-  #  st.caption(f"📂 Datos cargados desde `{DATA_DIR}` (evento: `{csv_path_used}`).")
 except Exception as e:
     st.error(f"❌ Error cargando los datos:\n\n{e}")
     st.stop()

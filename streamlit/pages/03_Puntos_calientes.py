@@ -6,12 +6,16 @@ import pydeck as pdk
 import altair as alt
 
 # =========================================================
-#   CONFIGURACIÓN
+#   CONFIGURACIÓN (MONGO DESDE SECRETS)
 # =========================================================
-MONGO_URI = "mongodb+srv://aitorherran:pEPEgOTIlIO@tfm.jwpe2w1.mongodb.net/?appName=tfm"
-client = MongoClient(MONGO_URI)
-db = client["incendios_espana"]
-collection = db["firms_actualizado"]
+try:
+    mongo_uri = st.secrets["MONGO"]["URI"]
+    client = MongoClient(mongo_uri)
+    db = client["incendios_espana"]
+    collection = db["firms_actualizado"]
+except Exception as e:
+    st.error(f"❌ No se pudo conectar a MongoDB (revisa MONGO.URI): {e}")
+    st.stop()
 
 st.set_page_config(
     page_title="Puntos calientes FIRMS (España)",
@@ -50,7 +54,7 @@ st.success(f"✅ Datos cargados: **{len(df):,}** registros totales (últimos 7 d
 #   DETECCIÓN DE COLUMNAS CLAVE
 # =========================================================
 
-# Lat / Lon (deberían ser 'latitud' y 'longitud')
+# Lat / Lon
 lat_cols = [c for c in df.columns if any(x in c.lower() for x in ["lat", "latitud"])]
 lon_cols = [c for c in df.columns if any(x in c.lower() for x in ["lon", "lng", "long", "longitud"])]
 
@@ -62,7 +66,7 @@ if not col_lat or not col_lon:
     st.write("Columnas disponibles:", list(df.columns))
     st.stop()
 
-# Fecha/hora: priorizar 'datetime'
+# Fecha / hora
 fecha_cols = [c for c in df.columns if any(x in c.lower() for x in ["fecha", "date", "time", "datetime"])]
 if "datetime" in df.columns:
     col_fecha = "datetime"
@@ -72,14 +76,16 @@ else:
     col_fecha = None
 
 if col_fecha:
-    # Normalizamos a datetime naive en UTC para evitar problemas de comparación
-    df[col_fecha] = pd.to_datetime(df[col_fecha], errors="coerce", utc=True).dt.tz_convert(None)
+    df[col_fecha] = (
+        pd.to_datetime(df[col_fecha], errors="coerce", utc=True)
+        .dt.tz_convert(None)
+    )
     fecha_min = df[col_fecha].dropna().min()
     fecha_max = df[col_fecha].dropna().max()
 else:
     fecha_min = fecha_max = None
 
-# Columna de provincia (si existe)
+# Provincia
 prov_cols = [c for c in df.columns if "prov" in c.lower()]
 col_prov = prov_cols[0] if prov_cols else None
 
@@ -91,10 +97,10 @@ st.sidebar.header("🧰 Filtros")
 opcion_tiempo = st.sidebar.selectbox(
     "Rango temporal:",
     ["Últimas 24h", "Últimas 48h", "Últimos 7 días", "Rango personalizado"],
-    index=2,  # 🔥 Por defecto: “Últimos 7 días”
+    index=2,
 )
 
-now = datetime.utcnow()  # naive UTC
+now = datetime.utcnow()
 
 if col_fecha and pd.notnull(fecha_min) and pd.notnull(fecha_max):
     if opcion_tiempo == "Últimas 24h":
@@ -106,7 +112,7 @@ if col_fecha and pd.notnull(fecha_min) and pd.notnull(fecha_max):
     elif opcion_tiempo == "Últimos 7 días":
         desde = now - timedelta(days=7)
         hasta = now
-    else:  # Rango personalizado
+    else:
         st.sidebar.markdown("### 📅 Rango personalizado")
         rango = st.sidebar.date_input(
             "Selecciona el rango de fechas:",
@@ -127,20 +133,18 @@ else:
     df_filtrado = df.copy()
 
 st.subheader(f"📁 Registros filtrados: **{len(df_filtrado):,}**")
+
 cols_preview = [c for c in [col_fecha, col_lat, col_lon, col_prov] if c in df_filtrado.columns]
 st.dataframe(df_filtrado[cols_preview].head(20), use_container_width=True)
 
 # =========================================================
-#   RESUMEN BÁSICO (sin gráficas raras)
+#   RESUMEN BÁSICO
 # =========================================================
 st.markdown("## 📊 Resumen de los datos filtrados")
 
-c1, c2, c3 = st.columns(3)
-
-# Nº detecciones
+c1, c2 = st.columns(2)
 c1.metric("Nº detecciones FIRMS", f"{len(df_filtrado):,}")
 
-# Rango temporal
 if col_fecha and not df_filtrado[col_fecha].dropna().empty:
     fmin = df_filtrado[col_fecha].dropna().min()
     fmax = df_filtrado[col_fecha].dropna().max()
@@ -148,10 +152,12 @@ if col_fecha and not df_filtrado[col_fecha].dropna().empty:
 else:
     c2.metric("Desde / hasta", "N/D")
 
-
-# Distribución por provincia (si hay columna)
+# =========================================================
+#   DISTRIBUCIÓN POR PROVINCIA
+# =========================================================
 if col_prov and not df_filtrado.empty:
-    st.markdown("### 🏅 Detecciones por provincia (subconjunto filtrado)")
+    st.markdown("### 🏅 Detecciones por provincia")
+
     prov_counts = (
         df_filtrado.groupby(col_prov, as_index=False)
         .size()
@@ -170,12 +176,13 @@ if col_prov and not df_filtrado.empty:
         )
         .properties(height=400)
     )
+
     st.altair_chart(chart_prov, use_container_width=True)
 
 st.markdown("---")
 
 # =========================================================
-#   MAPA DE PUNTOS CALIENTES (SOLO ESPAÑA)
+#   MAPA DE PUNTOS CALIENTES
 # =========================================================
 st.markdown("## 🗺️ Mapa de puntos calientes FIRMS (solo España)")
 
@@ -225,7 +232,9 @@ else:
 #   EXPORTAR CSV FILTRADO
 # =========================================================
 st.markdown("## 💾 Exportar datos filtrados")
+
 csv = df_filtrado.to_csv(index=False).encode("utf-8")
+
 st.download_button(
     "💾 Descargar CSV filtrado",
     csv,
