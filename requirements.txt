@@ -1,3 +1,12 @@
-pandas
-pymongo>=4.6.1
 requests
+streamlit
+pandas
+numpy
+altair
+pydeck
+pymongo
+joblib
+geopandas
+shapely
+pyproj
+fiona
