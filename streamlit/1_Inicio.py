@@ -10,12 +10,13 @@ st.set_page_config(
 )
 
 # =========================================================
-# CSS (tema + cards + botones)
+# CSS (tema + cards + botones alineados)
 # =========================================================
 st.markdown(
     """
     <style>
     .block-container { padding-top: 3.5rem; padding-bottom: 1.5rem; }
+
     .hero {
         border-radius: 18px;
         padding: 26px;
@@ -25,21 +26,29 @@ st.markdown(
         border: 1px solid rgba(255,255,255,0.08);
         box-shadow: 0 10px 30px rgba(0,0,0,0.35);
     }
+
     .hero h1 { margin: 0; font-size: 2.6rem; }
     .hero h2 { margin-top: 0.4rem; color: rgba(255,255,255,0.85); }
+
     .muted { color: rgba(255,255,255,0.7); }
+
     .pill {
-        display:inline-block; padding:6px 10px; border-radius:999px;
+        display:inline-block;
+        padding:6px 10px;
+        border-radius:999px;
         border:1px solid rgba(255,255,255,0.12);
         background: rgba(255,255,255,0.04);
-        margin-right:6px; margin-top:6px;
+        margin-right:6px;
+        margin-top:6px;
         font-size:0.85rem;
     }
+
     .section-title {
         margin: 1rem 0 0.6rem 0;
         font-size: 1.35rem;
         font-weight: 700;
     }
+
     .card {
         border-radius: 16px;
         padding: 16px;
@@ -48,10 +57,21 @@ st.markdown(
         box-shadow: 0 6px 18px rgba(0,0,0,0.22);
         height: 100%;
     }
-    .card h3 { margin: 0 0 6px 0; font-size: 1.1rem; }
-    .card p, .card li { color: rgba(255,255,255,0.75); }
+
+    .card-wrapper {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    .card-content {
+        flex-grow: 1;
+    }
+
     .divider {
-        height:1px; background:rgba(255,255,255,0.08); margin:16px 0;
+        height:1px;
+        background:rgba(255,255,255,0.08);
+        margin:16px 0;
     }
     </style>
     """,
@@ -96,13 +116,10 @@ def go(page_key: str):
     try:
         st.switch_page(PAGES[page_key])
     except Exception as e:
-        st.error(
-            f"No puedo navegar a `{PAGES.get(page_key)}`.\n\n"
-            f"Error: {e}"
-        )
+        st.error(f"No puedo navegar a `{PAGES.get(page_key)}`\n\n{e}")
 
 # =========================================================
-# SECCIONES
+# SECCIONES PRINCIPALES
 # =========================================================
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 st.markdown('<div class="section-title">🧭 Secciones principales</div>', unsafe_allow_html=True)
@@ -112,9 +129,11 @@ c1, c2 = st.columns(2, gap="large")
 with c1:
     st.markdown(
         """
-        <div class="card">
-            <h3>📚 Datos del proyecto</h3>
-            <p>Descripción de datasets, variables y equivalencias.</p>
+        <div class="card card-wrapper">
+            <div class="card-content">
+                <h3>📚 Datos del proyecto</h3>
+                <p>Descripción de datasets, variables y equivalencias.</p>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -125,9 +144,11 @@ with c1:
 with c2:
     st.markdown(
         """
-        <div class="card">
-            <h3>📊 Histórico multifuente</h3>
-            <p>FIRMS + Open-Meteo + EFFIS (evento y provincia-día).</p>
+        <div class="card card-wrapper">
+            <div class="card-content">
+                <h3>📊 Histórico multifuente</h3>
+                <p>FIRMS + Open-Meteo + EFFIS (evento y provincia-día).</p>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -140,9 +161,11 @@ c3, c4 = st.columns(2, gap="large")
 with c3:
     st.markdown(
         """
-        <div class="card">
-            <h3>🌡️ Puntos calientes FIRMS</h3>
-            <p>Monitorización casi en tiempo real.</p>
+        <div class="card card-wrapper">
+            <div class="card-content">
+                <h3>🌡️ Puntos calientes FIRMS</h3>
+                <p>Monitorización casi en tiempo real.</p>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -153,9 +176,11 @@ with c3:
 with c4:
     st.markdown(
         """
-        <div class="card">
-            <h3>🔥 Predicción de riesgo</h3>
-            <p>AEMET + Random Forest por provincia.</p>
+        <div class="card card-wrapper">
+            <div class="card-content">
+                <h3>🔥 Predicción de riesgo</h3>
+                <p>AEMET + Random Forest por provincia.</p>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
