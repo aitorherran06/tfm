@@ -229,12 +229,12 @@ st.subheader("🗺️ Mapa de riesgo medio por provincia")
 
 @st.cache_data(show_spinner=True)
 def cargar_provincias_geometria():
-    shp_path = os.path.join(DATA_DIR, "gadm41_ESP_2.shp")
+    geojson_path = os.path.join(DATA_DIR, "gadm41_ESP_2.json")
 
-    if not os.path.exists(shp_path):
-        raise FileNotFoundError(f"No se encuentra el shapefile: {shp_path}")
+    if not os.path.exists(geojson_path):
+        raise FileNotFoundError(f"No se encuentra el GeoJSON: {geojson_path}")
 
-    gdf = gpd.read_file(shp_path)[["NAME_2", "geometry"]]
+    gdf = gpd.read_file(geojson_path)[["NAME_2", "geometry"]]
     gdf = gdf.rename(columns={"NAME_2": "provincia"})
 
     gdf["provincia_norm"] = (
@@ -248,9 +248,6 @@ def cargar_provincias_geometria():
     )
 
     return gdf
-
-
-
 
 
 def norm(s):
@@ -304,6 +301,8 @@ st.caption(
     f"Colores calculados para la fecha **{fecha_seleccionada.strftime('%Y-%m-%d')}**. "
     "Rojo = mayor riesgo relativo según el modelo."
 )
+
+
 
 
 
