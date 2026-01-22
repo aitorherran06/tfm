@@ -15,63 +15,78 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    .block-container { padding-top: 3.5rem; padding-bottom: 1.5rem; }
+    .block-container {
+        padding-top: 3.5rem;
+        padding-bottom: 1.5rem;
+    }
 
     .hero {
         border-radius: 18px;
         padding: 26px;
-        background: radial-gradient(1200px 500px at 20% 10%, rgba(255,140,0,0.30), transparent 60%),
-                    radial-gradient(1200px 500px at 80% 20%, rgba(255,0,0,0.18), transparent 55%),
-                    linear-gradient(135deg, rgba(18,18,18,0.78), rgba(18,18,18,0.55));
+        background:
+            radial-gradient(1200px 500px at 20% 10%, rgba(255,140,0,0.30), transparent 60%),
+            radial-gradient(1200px 500px at 80% 20%, rgba(255,0,0,0.18), transparent 55%),
+            linear-gradient(135deg, rgba(18,18,18,0.78), rgba(18,18,18,0.55));
         border: 1px solid rgba(255,255,255,0.08);
         box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+        margin-bottom: 1.5rem;
     }
 
-    .hero h1 { margin: 0; font-size: 2.6rem; }
-    .hero h2 { margin-top: 0.4rem; color: rgba(255,255,255,0.85); }
+    .hero h1 {
+        margin: 0;
+        font-size: 2.6rem;
+    }
 
-    .muted { color: rgba(255,255,255,0.7); }
+    .hero h2 {
+        margin-top: 0.4rem;
+        color: rgba(255,255,255,0.85);
+        font-weight: 600;
+    }
+
+    .muted {
+        color: rgba(255,255,255,0.70);
+    }
 
     .pill {
-        display:inline-block;
-        padding:6px 10px;
-        border-radius:999px;
-        border:1px solid rgba(255,255,255,0.12);
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.12);
         background: rgba(255,255,255,0.04);
-        margin-right:6px;
-        margin-top:6px;
-        font-size:0.85rem;
+        margin-right: 6px;
+        margin-top: 6px;
+        font-size: 0.85rem;
     }
 
     .section-title {
-        margin: 1rem 0 0.6rem 0;
+        margin: 1.2rem 0 0.8rem 0;
         font-size: 1.35rem;
         font-weight: 700;
     }
 
     .card {
         border-radius: 16px;
-        padding: 16px;
+        padding: 18px;
         background: rgba(255,255,255,0.03);
         border: 1px solid rgba(255,255,255,0.08);
         box-shadow: 0 6px 18px rgba(0,0,0,0.22);
-        height: 100%;
+        min-height: 160px;
     }
 
-    .card-wrapper {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
+    .card-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin-bottom: 6px;
     }
 
-    .card-content {
-        flex-grow: 1;
+    .card-text {
+        color: rgba(255,255,255,0.75);
     }
 
     .divider {
-        height:1px;
-        background:rgba(255,255,255,0.08);
-        margin:16px 0;
+        height: 1px;
+        background: rgba(255,255,255,0.08);
+        margin: 18px 0;
     }
     </style>
     """,
@@ -116,7 +131,7 @@ def go(page_key: str):
     try:
         st.switch_page(PAGES[page_key])
     except Exception as e:
-        st.error(f"No puedo navegar a `{PAGES.get(page_key)}`\n\n{e}")
+        st.error(f"No puedo navegar a {PAGES.get(page_key)}\n\n{e}")
 
 # =========================================================
 # SECCIONES PRINCIPALES
@@ -129,10 +144,10 @@ c1, c2 = st.columns(2, gap="large")
 with c1:
     st.markdown(
         """
-        <div class="card card-wrapper">
-            <div class="card-content">
-                <h3>📚 Datos del proyecto</h3>
-                <p>Descripción de datasets, variables y equivalencias.</p>
+        <div class="card">
+            <div class="card-title">📚 Datos del proyecto</div>
+            <div class="card-text">
+                Descripción de datasets, variables y equivalencias.
             </div>
         </div>
         """,
@@ -144,10 +159,10 @@ with c1:
 with c2:
     st.markdown(
         """
-        <div class="card card-wrapper">
-            <div class="card-content">
-                <h3>📊 Histórico multifuente</h3>
-                <p>FIRMS + Open-Meteo + EFFIS (evento y provincia-día).</p>
+        <div class="card">
+            <div class="card-title">📊 Histórico multifuente</div>
+            <div class="card-text">
+                FIRMS + Open-Meteo + EFFIS (evento y provincia-día).
             </div>
         </div>
         """,
@@ -161,10 +176,10 @@ c3, c4 = st.columns(2, gap="large")
 with c3:
     st.markdown(
         """
-        <div class="card card-wrapper">
-            <div class="card-content">
-                <h3>🌡️ Puntos calientes FIRMS</h3>
-                <p>Monitorización casi en tiempo real.</p>
+        <div class="card">
+            <div class="card-title">🌡️ Puntos calientes FIRMS</div>
+            <div class="card-text">
+                Monitorización casi en tiempo real.
             </div>
         </div>
         """,
@@ -176,10 +191,10 @@ with c3:
 with c4:
     st.markdown(
         """
-        <div class="card card-wrapper">
-            <div class="card-content">
-                <h3>🔥 Predicción de riesgo</h3>
-                <p>AEMET + Random Forest por provincia.</p>
+        <div class="card">
+            <div class="card-title">🔥 Predicción de riesgo</div>
+            <div class="card-text">
+                AEMET + Random Forest por provincia.
             </div>
         </div>
         """,
