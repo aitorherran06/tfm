@@ -243,9 +243,8 @@ sobre su extensión, fecha y localización administrativa.
 
     @st.cache_data(show_spinner=True)
     def load_copernicus(path: str) -> gpd.GeoDataFrame:
-        gdf_ = gpd.read_file(path, driver="ESRI Shapefile")
+        gdf_ = gpd.read_file(path)
         return gdf_
-
 
     try:
         gdf_effis = load_copernicus(COPERNICUS_SHP)
@@ -849,5 +848,6 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
