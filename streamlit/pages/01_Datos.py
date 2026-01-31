@@ -220,13 +220,6 @@ with tab_firms:
         st.info("No hay fechas válidas para construir la serie anual.")
 
 # =========================================================
-# 2) TAB COPERNICUS EFFIS (shapefile en carpeta copernicus)
-# =========================================================
-
-# =========================================================
-# CONFIGURACIÓN DE RUTAS (PORTABLE)
-# =========================================================
-# =========================================================
 # 2) TAB COPERNICUS EFFIS – SHAPEFILE
 # =========================================================
 
@@ -236,7 +229,7 @@ import pandas as pd
 import altair as alt
 
 # =========================================================
-# CONFIGURACIÓN DE RUTAS ROBUSTA (LOCAL + CLOUD)
+# CONFIGURACIÓN DE RUTAS ROBUSTA (LOCAL + STREAMLIT CLOUD)
 # =========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -272,13 +265,13 @@ sobre extensión, año y región administrativa.
     )
 
     # -----------------------------------------------------
-    # CARGA SHAPEFILE
+    # CARGA SHAPEFILE (USANDO PYOGRIO → FUNCIONA EN CLOUD)
     # -----------------------------------------------------
     @st.cache_data(show_spinner=True)
     def load_copernicus(path: str) -> gpd.GeoDataFrame:
-        return gpd.read_file(path)
+        return gpd.read_file(path, engine="pyogrio")
 
-    # DEBUG (puedes borrarlo cuando funcione)
+    # DEBUG (déjalo hasta que confirmes que carga)
     st.write("📂 Ruta Copernicus:", COPERNICUS_SHP)
     st.write("Existe el archivo?", os.path.exists(COPERNICUS_SHP))
 
@@ -300,7 +293,10 @@ sobre extensión, año y región administrativa.
         col = date_cols[0]
         gdf_effis[col] = pd.to_datetime(gdf_effis[col], errors="coerce")
         if gdf_effis[col].notna().any():
-            rango_str = f"{gdf_effis[col].min():%d/%m/%Y} – {gdf_effis[col].max():%d/%m/%Y}"
+            rango_str = (
+                f"{gdf_effis[col].min():%d/%m/%Y} – "
+                f"{gdf_effis[col].max():%d/%m/%Y}"
+            )
     elif year_cols:
         col = year_cols[0]
         rango_str = f"{int(gdf_effis[col].min())} – {int(gdf_effis[col].max())}"
@@ -333,10 +329,13 @@ sobre extensión, año y región administrativa.
     # -----------------------------------------------------
     # MÉTRICAS BÁSICAS
     # -----------------------------------------------------
-    area_candidates = [c for c in attrs.columns if "area" in c.lower() and "ha" in c.lower()]
+    area_candidates = [
+        c for c in attrs.columns if "area" in c.lower() and "ha" in c.lower()
+    ]
     area_col = area_candidates[0] if area_candidates else None
 
     c1, c2 = st.columns(2)
+
     if area_col:
         area_total = pd.to_numeric(attrs[area_col], errors="coerce").sum()
         c1.metric("Área total quemada (ha)", f"{area_total:,.1f}")
@@ -382,8 +381,6 @@ sobre extensión, año y región administrativa.
             st.info("No hay columnas categóricas para agrupar.")
     else:
         st.info("No se ha detectado ninguna columna de área quemada.")
-
-
 
 
 
@@ -852,6 +849,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
