@@ -231,19 +231,18 @@ from pymongo import MongoClient
 from shapely.geometry import shape
 
 # ---------------------------------------------------------
-# CONFIG MONGO (IGUAL QUE FIRMS)
-# ---------------------------------------------------------
-MONGO_URI = st.secrets["mongo"]["uri"]
-DB_NAME = "incendios_espana"
-COLLECTION = "copernicus_effis"
-
-# ---------------------------------------------------------
-# FUNCIÓN DE CARGA DESDE MONGO
+# FUNCIÓN DE CARGA DESDE MONGO (MISMO PATRÓN QUE FIRMS)
 # ---------------------------------------------------------
 @st.cache_data(show_spinner=True)
 def load_copernicus_from_mongo() -> gpd.GeoDataFrame:
-    client = MongoClient(MONGO_URI)
-    col = client[DB_NAME][COLLECTION]
+    """
+    Carga los perímetros Copernicus EFFIS desde MongoDB.
+    Colección esperada: incendios_espana.copernicus_effis
+    """
+
+    client = MongoClient(st.secrets["MONGO"]["URI"])
+    db = client["incendios_espana"]
+    col = db["copernicus_effis"]
 
     docs = list(col.find({}, {"_id": 0}))
     if not docs:
@@ -253,6 +252,7 @@ def load_copernicus_from_mongo() -> gpd.GeoDataFrame:
     gdf = gpd.GeoDataFrame(docs, geometry=geometries, crs="EPSG:4326")
 
     return gdf
+
 
 # ---------------------------------------------------------
 # TAB COPERNICUS
@@ -274,7 +274,7 @@ temporal y administrativa.
     try:
         gdf_effis = load_copernicus_from_mongo()
     except Exception as e:
-        st.error(f"❌ Error cargando Copernicus desde MongoDB: {e}")
+        st.error(f"❌ No se pudo cargar Copernicus desde MongoDB: {e}")
         st.stop()
 
     if gdf_effis.empty:
@@ -369,6 +369,9 @@ temporal y administrativa.
             st.info("No hay columnas categóricas para agrupar.")
     else:
         st.info("No se ha detectado columna de área quemada.")
+
+
+
 
 # =========================================================
 # 3) TAB OPEN-METEO HISTÓRICO (openmeteo_historico.csv)
@@ -835,6 +838,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
