@@ -226,11 +226,33 @@ with tab_firms:
 # =========================================================
 # CONFIGURACIÓN DE RUTAS (PORTABLE)
 # =========================================================
+# =========================================================
+# 2) TAB COPERNICUS EFFIS – SHAPEFILE
+# =========================================================
+
+import os
+import geopandas as gpd
+import pandas as pd
+import altair as alt
+
+# =========================================================
+# CONFIGURACIÓN DE RUTAS ROBUSTA (LOCAL + CLOUD)
+# =========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Raíz del proyecto (01_Datos.py está en streamlit/pages/)
-# pages -> streamlit -> tfm
-PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", "..", ".."))
+def find_project_root(start_path: str) -> str:
+    """
+    Sube carpetas hasta encontrar 'data-copernicus'.
+    Funciona en local y en Streamlit Cloud.
+    """
+    current = start_path
+    while current != os.path.dirname(current):
+        if os.path.isdir(os.path.join(current, "data-copernicus")):
+            return current
+        current = os.path.dirname(current)
+    raise FileNotFoundError("No se encontró la carpeta 'data-copernicus'")
+
+PROJECT_ROOT = find_project_root(BASE_DIR)
 
 DATA_COP_DIR = os.path.join(PROJECT_ROOT, "data-copernicus")
 COPERNICUS_SHP = os.path.join(DATA_COP_DIR, "modis.ba.poly.shp")
@@ -242,19 +264,23 @@ with tab_cop:
     st.markdown(
         """
 Copernicus **EFFIS** (European Forest Fire Information System) proporciona 
-los **perímetros oficiales de incendios** en Europa.  
-En este dataset, **cada fila representa un polígono de área quemada**, con atributos 
-sobre su extensión, fecha y localización administrativa.
+los **perímetros oficiales de incendios** en Europa.
+
+En este dataset, **cada fila representa un polígono de área quemada**, con información
+sobre extensión, año y región administrativa.
 """
     )
 
+    # -----------------------------------------------------
+    # CARGA SHAPEFILE
+    # -----------------------------------------------------
     @st.cache_data(show_spinner=True)
     def load_copernicus(path: str) -> gpd.GeoDataFrame:
         return gpd.read_file(path)
 
-    # --- DEBUG útil (puedes quitarlo luego)
+    # DEBUG (puedes borrarlo cuando funcione)
     st.write("📂 Ruta Copernicus:", COPERNICUS_SHP)
-    st.write("Existe?", os.path.exists(COPERNICUS_SHP))
+    st.write("Existe el archivo?", os.path.exists(COPERNICUS_SHP))
 
     try:
         gdf_effis = load_copernicus(COPERNICUS_SHP)
@@ -282,7 +308,7 @@ sobre su extensión, fecha y localización administrativa.
     if rango_str:
         st.caption(f"🗓️ Periodo disponible Copernicus EFFIS: **{rango_str}**")
     else:
-        st.caption("🗓️ Periodo disponible Copernicus EFFIS: no se ha encontrado fecha/año.")
+        st.caption("🗓️ Periodo disponible Copernicus EFFIS: no se encontró fecha/año.")
 
     # -----------------------------------------------------
     # EXPLICACIÓN DE COLUMNAS
@@ -290,10 +316,10 @@ sobre su extensión, fecha y localización administrativa.
     with st.expander("ℹ️ ¿Qué significan las columnas principales de EFFIS?"):
         st.markdown(
             """
-- **geometry**: polígono del área quemada.  
-- **AREA_HA / BA_HA / BURN_AREA**: superficie quemada en hectáreas.  
-- **YEAR / FIRE_YEAR**: año del incendio.  
-- **NUTS_NAME / ADM_NAME**: región o entidad administrativa.  
+- **geometry**: polígono que delimita el área quemada  
+- **AREA_HA / BA_HA / BURN_AREA**: superficie quemada en hectáreas  
+- **YEAR / FIRE_YEAR**: año del incendio  
+- **NUTS_NAME / ADM_NAME**: región administrativa  
 """
         )
 
@@ -320,7 +346,7 @@ sobre su extensión, fecha y localización administrativa.
     c2.metric("Número de polígonos", f"{len(attrs):,}")
 
     # -----------------------------------------------------
-    # RANKING
+    # RANKING POR ENTIDAD
     # -----------------------------------------------------
     st.subheader("🏅 Entidades con mayor área quemada (Copernicus)")
 
@@ -355,7 +381,12 @@ sobre su extensión, fecha y localización administrativa.
         else:
             st.info("No hay columnas categóricas para agrupar.")
     else:
-        st.info("No se ha detectado columna de área quemada.")
+        st.info("No se ha detectado ninguna columna de área quemada.")
+
+
+
+
+
 # =========================================================
 # 3) TAB OPEN-METEO HISTÓRICO (openmeteo_historico.csv)
 # =========================================================
@@ -821,6 +852,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
