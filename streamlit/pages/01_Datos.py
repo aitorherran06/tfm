@@ -222,6 +222,20 @@ with tab_firms:
 # =========================================================
 # 2) TAB COPERNICUS EFFIS (shapefile en carpeta copernicus)
 # =========================================================
+
+# =========================================================
+# CONFIGURACIÓN DE RUTAS (PORTABLE)
+# =========================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Raíz del proyecto (dos niveles arriba de pages/)
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
+
+DATA_COP_DIR = os.path.join(PROJECT_ROOT, "data-copernicus")
+
+COPERNICUS_SHP = os.path.join(DATA_COP_DIR, "modis.ba.poly.shp")
+
+
 with tab_cop:
     st.header("🔥 Copernicus EFFIS – Severidad y área quemada")
 
@@ -841,6 +855,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
