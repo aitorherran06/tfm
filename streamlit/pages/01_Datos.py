@@ -72,25 +72,23 @@ with tab_firms:
     
     @st.cache_data(show_spinner=True)
     def load_firms(path: str) -> pd.DataFrame:
-        # 1) Leer el CSV IGNORANDO geometry (rompe el parser)
+        # Separador: coma SOLO si NO está dentro de paréntesis
+        sep_regex = r",(?=(?:[^()]*\([^()]*\))*[^()]*$)"
+    
         df_ = pd.read_csv(
             path,
-            usecols=lambda c: c != "geometry",
+            sep=sep_regex,
+            engine="python",
             low_memory=False,
         )
     
-        # 2) Crear firms_date correctamente
-        if "firms_date" in df_.columns:
-            df_["firms_date"] = pd.to_datetime(df_["firms_date"], errors="coerce")
-    
-        elif "acq_date" in df_.columns:
-            # acq_date viene como YYYY-MM-DD → OK
+        # Crear firms_date correctamente
+        if "acq_date" in df_.columns:
             df_["firms_date"] = pd.to_datetime(df_["acq_date"], errors="coerce")
-    
         else:
             df_["firms_date"] = pd.NaT
     
-        # 3) Limpiar provincia
+        # Limpiar provincia
         if "provincia" in df_.columns:
             df_["provincia"] = df_["provincia"].astype(str).str.strip()
     
@@ -858,6 +856,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
