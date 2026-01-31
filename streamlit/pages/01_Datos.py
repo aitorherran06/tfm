@@ -69,21 +69,31 @@ explorar rápidamente la información de cada fuente:
 # =========================================================
 with tab_firms:
     st.header("🛰️ FIRMS – Detecciones históricas de incendios")
-
+    
     @st.cache_data(show_spinner=True)
     def load_firms(path: str) -> pd.DataFrame:
-        df_ = pd.read_csv(path, low_memory=False)
-
+        # 1) Leer el CSV IGNORANDO geometry (rompe el parser)
+        df_ = pd.read_csv(
+            path,
+            usecols=lambda c: c != "geometry",
+            low_memory=False,
+        )
+    
+        # 2) Crear firms_date correctamente
         if "firms_date" in df_.columns:
             df_["firms_date"] = pd.to_datetime(df_["firms_date"], errors="coerce")
+    
         elif "acq_date" in df_.columns:
+            # acq_date viene como YYYY-MM-DD → OK
             df_["firms_date"] = pd.to_datetime(df_["acq_date"], errors="coerce")
+    
         else:
             df_["firms_date"] = pd.NaT
-
+    
+        # 3) Limpiar provincia
         if "provincia" in df_.columns:
             df_["provincia"] = df_["provincia"].astype(str).str.strip()
-
+    
         return df_
 
     try:
@@ -848,6 +858,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
