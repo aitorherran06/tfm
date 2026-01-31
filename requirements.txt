@@ -9,6 +9,7 @@ joblib
 geopandas
 shapely
 pyproj
+pyogrio
 fiona
 scikit-learn
 h3
