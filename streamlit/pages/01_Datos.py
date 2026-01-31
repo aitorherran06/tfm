@@ -220,115 +220,103 @@ with tab_firms:
         st.info("No hay fechas válidas para construir la serie anual.")
 
 # =========================================================
-# 2) TAB COPERNICUS EFFIS – PERÍMETROS DE INCENDIOS (GEOJSON)
+# 2) TAB COPERNICUS EFFIS – PERÍMETROS DE INCENDIOS (MONGO)
 # =========================================================
 
-import os
-import geopandas as gpd
 import pandas as pd
+import geopandas as gpd
 import altair as alt
 import streamlit as st
+from pymongo import MongoClient
+from shapely.geometry import shape
 
 # ---------------------------------------------------------
-# RUTAS ROBUSTAS (LOCAL + STREAMLIT CLOUD)
+# CONFIG MONGO (IGUAL QUE FIRMS)
 # ---------------------------------------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MONGO_URI = st.secrets["mongo"]["uri"]
+DB_NAME = "incendios_espana"
+COLLECTION = "copernicus_effis"
 
-def find_project_root(start_path: str) -> str:
-    """
-    Sube carpetas hasta encontrar 'data-copernicus'.
-    Funciona tanto en local como en Streamlit Cloud.
-    """
-    current = start_path
-    while current != os.path.dirname(current):
-        if os.path.isdir(os.path.join(current, "data-copernicus")):
-            return current
-        current = os.path.dirname(current)
-    raise FileNotFoundError("No se encontró la carpeta 'data-copernicus'")
+# ---------------------------------------------------------
+# FUNCIÓN DE CARGA DESDE MONGO
+# ---------------------------------------------------------
+@st.cache_data(show_spinner=True)
+def load_copernicus_from_mongo() -> gpd.GeoDataFrame:
+    client = MongoClient(MONGO_URI)
+    col = client[DB_NAME][COLLECTION]
 
-PROJECT_ROOT = find_project_root(BASE_DIR)
+    docs = list(col.find({}, {"_id": 0}))
+    if not docs:
+        return gpd.GeoDataFrame()
 
-DATA_COP_DIR = os.path.join(PROJECT_ROOT, "data-copernicus")
-COPERNICUS_GEOJSON = os.path.join(DATA_COP_DIR, "modis.ba.poly.geojson")
+    geometries = [shape(d.pop("geometry")) for d in docs]
+    gdf = gpd.GeoDataFrame(docs, geometry=geometries, crs="EPSG:4326")
+
+    return gdf
 
 # ---------------------------------------------------------
 # TAB COPERNICUS
 # ---------------------------------------------------------
 with tab_cop:
-    st.header("🔥 Copernicus EFFIS – Severidad y área quemada")
+    st.header("🔥 Copernicus EFFIS – Área quemada y severidad")
 
     st.markdown(
         """
-Copernicus **EFFIS** (European Forest Fire Information System) proporciona los
+Copernicus **EFFIS (European Forest Fire Information System)** proporciona los  
 **perímetros oficiales de incendios** en Europa.
 
-En este dataset, **cada fila representa un polígono de área quemada**, con
-información sobre su extensión, año y localización administrativa.
+Cada fila representa un **polígono de área quemada**, con información
+temporal y administrativa.
 """
     )
 
-    # -----------------------------------------------------
-    # CARGA GEOJSON
-    # -----------------------------------------------------
-    @st.cache_data(show_spinner=True)
-    def load_copernicus(path: str) -> gpd.GeoDataFrame:
-        return gpd.read_file(path)
-
-    # Debug visual (puedes quitarlo luego)
-    st.write("📂 Ruta Copernicus GeoJSON:", COPERNICUS_GEOJSON)
-    st.write("Existe el archivo?", os.path.exists(COPERNICUS_GEOJSON))
-
+    # ------------------ CARGA ------------------
     try:
-        gdf_effis = load_copernicus(COPERNICUS_GEOJSON)
-        st.success(f"Polígonos quemados: **{len(gdf_effis):,}**")
+        gdf_effis = load_copernicus_from_mongo()
     except Exception as e:
-        st.error(f"❌ No se pudo cargar Copernicus EFFIS: {e}")
+        st.error(f"❌ Error cargando Copernicus desde MongoDB: {e}")
         st.stop()
 
-    # -----------------------------------------------------
-    # RANGO TEMPORAL
-    # -----------------------------------------------------
+    if gdf_effis.empty:
+        st.warning("⚠️ No hay datos de Copernicus en MongoDB.")
+        st.stop()
+
+    st.success(f"Polígonos quemados: **{len(gdf_effis):,}**")
+
+    # ------------------ RANGO TEMPORAL ------------------
     date_cols = [c for c in gdf_effis.columns if "date" in c.lower()]
     year_cols = [c for c in gdf_effis.columns if "year" in c.lower()]
 
-    rango_str = None
+    rango = None
     if date_cols:
         col = date_cols[0]
         gdf_effis[col] = pd.to_datetime(gdf_effis[col], errors="coerce")
         if gdf_effis[col].notna().any():
-            rango_str = f"{gdf_effis[col].min():%Y} – {gdf_effis[col].max():%Y}"
+            rango = f"{gdf_effis[col].min():%Y} – {gdf_effis[col].max():%Y}"
     elif year_cols:
         col = year_cols[0]
-        rango_str = f"{int(gdf_effis[col].min())} – {int(gdf_effis[col].max())}"
+        rango = f"{int(gdf_effis[col].min())} – {int(gdf_effis[col].max())}"
 
-    if rango_str:
-        st.caption(f"🗓️ Periodo disponible Copernicus EFFIS: **{rango_str}**")
-    else:
-        st.caption("🗓️ Periodo disponible Copernicus EFFIS: no se encontró fecha/año.")
+    if rango:
+        st.caption(f"🗓️ Periodo disponible Copernicus EFFIS: **{rango}**")
 
-    # -----------------------------------------------------
-    # EXPLICACIÓN DE COLUMNAS
-    # -----------------------------------------------------
-    with st.expander("ℹ️ ¿Qué significan las columnas principales de EFFIS?"):
+    # ------------------ EXPLICACIÓN ------------------
+    with st.expander("ℹ️ ¿Qué significan las columnas de Copernicus?"):
         st.markdown(
             """
-- **geometry**: polígono que delimita el área quemada  
-- **AREA_HA / BA_HA / BURN_AREA**: superficie quemada en hectáreas  
-- **YEAR / FIRE_YEAR**: año del incendio  
-- **NUTS_NAME / ADM_NAME / provincia**: unidad administrativa  
+- **geometry** → polígono del incendio  
+- **AREA_HA / BA_HA / BURN_AREA** → área quemada (hectáreas)  
+- **YEAR / FIRE_YEAR** → año del incendio  
+- **NUTS_NAME / ADM_NAME / provincia** → unidad administrativa  
 """
         )
 
-    # -----------------------------------------------------
-    # MUESTRA DE DATOS
-    # -----------------------------------------------------
-    st.subheader("📋 Muestra de datos EFFIS (sin geometría)")
+    # ------------------ TABLA ------------------
+    st.subheader("📋 Muestra de datos Copernicus (sin geometría)")
     attrs = gdf_effis.drop(columns=["geometry"], errors="ignore")
     st.dataframe(attrs.head(20), use_container_width=True)
 
-    # -----------------------------------------------------
-    # MÉTRICAS BÁSICAS
-    # -----------------------------------------------------
+    # ------------------ MÉTRICAS ------------------
     area_candidates = [
         c for c in attrs.columns if "area" in c.lower() and "ha" in c.lower()
     ]
@@ -337,16 +325,14 @@ información sobre su extensión, año y localización administrativa.
     c1, c2 = st.columns(2)
 
     if area_col:
-        area_total = pd.to_numeric(attrs[area_col], errors="coerce").sum()
-        c1.metric("Área total quemada (ha)", f"{area_total:,.1f}")
+        total_area = pd.to_numeric(attrs[area_col], errors="coerce").sum()
+        c1.metric("Área total quemada (ha)", f"{total_area:,.1f}")
     else:
         c1.metric("Área total quemada (ha)", "N/D")
 
     c2.metric("Número de polígonos", f"{len(attrs):,}")
 
-    # -----------------------------------------------------
-    # RANKING POR ENTIDAD ADMINISTRATIVA
-    # -----------------------------------------------------
+    # ------------------ RANKING ------------------
     st.subheader("🏅 Entidades con mayor área quemada (Copernicus)")
 
     if area_col:
@@ -367,7 +353,7 @@ información sobre su extensión, año y localización administrativa.
                 .sort_values("area_total", ascending=False)
             )
 
-            chart_rank = (
+            chart = (
                 alt.Chart(ranking.head(15))
                 .mark_bar()
                 .encode(
@@ -377,12 +363,12 @@ información sobre su extensión, año y localización administrativa.
                 )
                 .properties(height=400)
             )
-            st.altair_chart(chart_rank, use_container_width=True)
-        else:
-            st.info("No se encontraron columnas categóricas para agrupar.")
-    else:
-        st.info("No se ha detectado ninguna columna de área quemada.")
 
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("No hay columnas categóricas para agrupar.")
+    else:
+        st.info("No se ha detectado columna de área quemada.")
 
 # =========================================================
 # 3) TAB OPEN-METEO HISTÓRICO (openmeteo_historico.csv)
@@ -849,6 +835,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
