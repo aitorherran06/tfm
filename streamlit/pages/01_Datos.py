@@ -70,24 +70,30 @@ explorar rápidamente la información de cada fuente:
 with tab_firms:
     st.header("🛰️ FIRMS – Detecciones históricas de incendios")
     
-    def load_firms(path: str) -> pd.DataFrame:
-        # Leer CSV ignorando geometry (no la necesitamos)
-        df_ = pd.read_csv(
-            path,
-            usecols=lambda c: c != "geometry"
-        )
-    
-        # Crear firms_date a partir de acq_date
-        if "acq_date" in df_.columns:
-            df_["firms_date"] = pd.to_datetime(df_["acq_date"], errors="coerce")
-        else:
-            df_["firms_date"] = pd.NaT
-    
-        # Limpiar provincia
-        if "provincia" in df_.columns:
-            df_["provincia"] = df_["provincia"].astype(str).str.strip()
-    
-        return df_
+   def load_firms(path: str) -> pd.DataFrame:
+    import os
+
+    st.error("DEBUG — path recibido:")
+    st.code(path)
+
+    st.error("DEBUG — existe el archivo?")
+    st.write(os.path.exists(path))
+
+    st.error("DEBUG — tamaño del archivo (bytes):")
+    st.write(os.path.getsize(path) if os.path.exists(path) else "NO EXISTE")
+
+    df_ = pd.read_csv(path)
+
+    st.error("DEBUG — filas leídas:")
+    st.write(len(df_))
+
+    st.error("DEBUG — columnas:")
+    st.write(df_.columns.tolist())
+
+    # Intento explícito de fecha
+    df_["firms_date"] = pd.to_datetime(df_.get("acq_date"), errors="coerce")
+
+    return df_
 
     try:
         df_firms_full = load_firms(CSV_FIRMS)
@@ -851,6 +857,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
