@@ -5,23 +5,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from pymongo import MongoClient
-import geopandas as gpd  # Para Copernicus
-
-# =========================================================
-# CONFIGURACIÓN DE RUTAS (PORTABLE – LOCAL + STREAMLIT CLOUD)
-# =========================================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Raíz del proyecto (tfm/)
-PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
-
-DATA_DIR = os.path.join(PROJECT_ROOT, "data")
-COP_DIR = os.path.join(PROJECT_ROOT, "data-copernicus")
-
-CSV_FIRMS = os.path.join(DATA_DIR, "firms_spain_provincia.csv")
-OPENMETEO_CSV = os.path.join(DATA_DIR, "openmeteo_historico.csv")
-COPERNICUS_SHP = os.path.join(COP_DIR, "modis.ba.poly.shp")
-
+import geopandas as gpd  # Para Copernicus (más adelante)
 
 # =========================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -65,35 +49,30 @@ explorar rápidamente la información de cada fuente:
 )
 
 # =========================================================
-# 1) TAB FIRMS
+# CARGA FIRMS DESDE MONGO (FUENTE ÚNICA)
 # =========================================================
-with tab_firms:
-    st.header("🛰️ FIRMS – Detecciones históricas de incendios")
-    
-   def load_firms(path: str) -> pd.DataFrame:
-    import os
+@st.cache_data(show_spinner=True)
+def load_firms_from_mongo() -> pd.DataFrame:
+    """
+    Carga el histórico FIRMS desde MongoDB.
+    Colección esperada: incendios_espana.firms_historico
+    """
 
-    st.error("DEBUG — path recibido:")
-    st.code(path)
+    client = MongoClient(st.secrets["MONGO"]["URI"])
+    db = client["incendios_espana"]
+    col = db["firms_historico"]
 
-    st.error("DEBUG — existe el archivo?")
-    st.write(os.path.exists(path))
+    docs = list(col.find({}, {"_id": 0}))
+    df = pd.DataFrame(docs)
 
-    st.error("DEBUG — tamaño del archivo (bytes):")
-    st.write(os.path.getsize(path) if os.path.exists(path) else "NO EXISTE")
+    if df.empty:
+        return df
 
-    df_ = pd.read_csv(path)
+    # Tipos y limpieza mínima
+    df["firms_date"] = pd.to_datetime(df["firms_date"], errors="coerce")
+    df["provincia"] = df["provincia"].astype(str).str.strip()
 
-    st.error("DEBUG — filas leídas:")
-    st.write(len(df_))
-
-    st.error("DEBUG — columnas:")
-    st.write(df_.columns.tolist())
-
-    # Intento explícito de fecha
-    df_["firms_date"] = pd.to_datetime(df_.get("acq_date"), errors="coerce")
-
-    return df_
+    return df
 
     try:
         df_firms_full = load_firms(CSV_FIRMS)
@@ -857,6 +836,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
