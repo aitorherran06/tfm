@@ -72,17 +72,13 @@ with tab_firms:
     
     @st.cache_data(show_spinner=True)
     def load_firms(path: str) -> pd.DataFrame:
-        # Separador: coma SOLO si NO está dentro de paréntesis
-        sep_regex = r",(?=(?:[^()]*\([^()]*\))*[^()]*$)"
-    
+        # Leer CSV ignorando geometry (no la necesitamos)
         df_ = pd.read_csv(
             path,
-            sep=sep_regex,
-            engine="python",
-            low_memory=False,
+            usecols=lambda c: c != "geometry"
         )
     
-        # Crear firms_date correctamente
+        # Crear firms_date a partir de acq_date
         if "acq_date" in df_.columns:
             df_["firms_date"] = pd.to_datetime(df_["acq_date"], errors="coerce")
         else:
@@ -856,6 +852,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
