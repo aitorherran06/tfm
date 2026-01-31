@@ -74,14 +74,20 @@ def load_firms_from_mongo() -> pd.DataFrame:
 
     return df
 
+
+# =========================================================
+# 1) TAB FIRMS
+# =========================================================
+with tab_firms:
+    st.header("🛰️ FIRMS – Detecciones históricas de incendios")
+
     try:
-        df_firms_full = load_firms(CSV_FIRMS)
+        df_firms_full = load_firms_from_mongo()
     except Exception as e:
-        st.error(f"❌ No se pudo cargar FIRMS: {e}")
+        st.error(f"❌ No se pudo cargar FIRMS desde MongoDB: {e}")
         st.stop()
 
     st.success(f"Registros FIRMS: **{len(df_firms_full):,}**")
-
 
     if df_firms_full["firms_date"].notna().any():
         min_date_global = df_firms_full["firms_date"].min()
@@ -91,7 +97,6 @@ def load_firms_from_mongo() -> pd.DataFrame:
             f"**{min_date_global:%d/%m/%Y} – {max_date_global:%d/%m/%Y}**"
         )
     else:
-        min_date_global = max_date_global = None
         st.caption("🗓️ Periodo disponible FIRMS: no hay fechas válidas.")
 
     # ---------- Filtros SOLO para FIRMS ----------
@@ -836,6 +841,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
