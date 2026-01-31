@@ -70,7 +70,6 @@ explorar rápidamente la información de cada fuente:
 with tab_firms:
     st.header("🛰️ FIRMS – Detecciones históricas de incendios")
     
-    @st.cache_data(show_spinner=True)
     def load_firms(path: str) -> pd.DataFrame:
         # Leer CSV ignorando geometry (no la necesitamos)
         df_ = pd.read_csv(
@@ -852,6 +851,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
