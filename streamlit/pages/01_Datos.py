@@ -267,9 +267,11 @@ sobre extensión, año y región administrativa.
     # -----------------------------------------------------
     # CARGA SHAPEFILE (USANDO PYOGRIO → FUNCIONA EN CLOUD)
     # -----------------------------------------------------
+    COPERNICUS_GEOJSON = os.path.join(DATA_COP_DIR, "modis.ba.poly.geojson")
+    
     @st.cache_data(show_spinner=True)
     def load_copernicus(path: str) -> gpd.GeoDataFrame:
-        return gpd.read_file(path, engine="pyogrio")
+        return gpd.read_file(path)
 
     # DEBUG (déjalo hasta que confirmes que carga)
     st.write("📂 Ruta Copernicus:", COPERNICUS_SHP)
@@ -849,6 +851,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
