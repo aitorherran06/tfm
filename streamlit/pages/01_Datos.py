@@ -228,11 +228,11 @@ with tab_firms:
 # =========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Raíz del proyecto (dos niveles arriba de pages/)
-PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
+# Raíz del proyecto (01_Datos.py está en streamlit/pages/)
+# pages -> streamlit -> tfm
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", "..", ".."))
 
 DATA_COP_DIR = os.path.join(PROJECT_ROOT, "data-copernicus")
-
 COPERNICUS_SHP = os.path.join(DATA_COP_DIR, "modis.ba.poly.shp")
 
 
@@ -250,21 +250,22 @@ sobre su extensión, fecha y localización administrativa.
 
     @st.cache_data(show_spinner=True)
     def load_copernicus(path: str) -> gpd.GeoDataFrame:
-        # Forzamos explícitamente el driver de Shapefile
-        gdf_ = gpd.read_file(
-            f"ESRI Shapefile:{path}"
-        )
-        return gdf_
+        return gpd.read_file(path)
+
+    # --- DEBUG útil (puedes quitarlo luego)
+    st.write("📂 Ruta Copernicus:", COPERNICUS_SHP)
+    st.write("Existe?", os.path.exists(COPERNICUS_SHP))
 
     try:
         gdf_effis = load_copernicus(COPERNICUS_SHP)
-    #    st.caption(f"📂 Shapefile cargado: `{COPERNICUS_SHP}`")
         st.success(f"Polígonos quemados: **{len(gdf_effis):,}**")
     except Exception as e:
         st.error(f"❌ No se pudo cargar Copernicus EFFIS: {e}")
         st.stop()
 
-    # Rango temporal: intentamos detectar columna de fecha o de año
+    # -----------------------------------------------------
+    # RANGO TEMPORAL
+    # -----------------------------------------------------
     date_cols = [c for c in gdf_effis.columns if "date" in c.lower()]
     year_cols = [c for c in gdf_effis.columns if "year" in c.lower()]
 
@@ -273,101 +274,68 @@ sobre su extensión, fecha y localización administrativa.
         col = date_cols[0]
         gdf_effis[col] = pd.to_datetime(gdf_effis[col], errors="coerce")
         if gdf_effis[col].notna().any():
-            min_d = gdf_effis[col].min()
-            max_d = gdf_effis[col].max()
-            rango_str = f"{min_d:%d/%m/%Y} – {max_d:%d/%m/%Y}"
+            rango_str = f"{gdf_effis[col].min():%d/%m/%Y} – {gdf_effis[col].max():%d/%m/%Y}"
     elif year_cols:
         col = year_cols[0]
-        min_y = gdf_effis[col].min()
-        max_y = gdf_effis[col].max()
-        rango_str = f"{int(min_y)} – {int(max_y)}"
+        rango_str = f"{int(gdf_effis[col].min())} – {int(gdf_effis[col].max())}"
 
     if rango_str:
         st.caption(f"🗓️ Periodo disponible Copernicus EFFIS: **{rango_str}**")
     else:
-        st.caption(
-            "🗓️ Periodo disponible Copernicus EFFIS: no se ha encontrado columna de fecha/año."
-        )
+        st.caption("🗓️ Periodo disponible Copernicus EFFIS: no se ha encontrado fecha/año.")
 
-    # Explicación de columnas
+    # -----------------------------------------------------
+    # EXPLICACIÓN DE COLUMNAS
+    # -----------------------------------------------------
     with st.expander("ℹ️ ¿Qué significan las columnas principales de EFFIS?"):
         st.markdown(
             """
-Aunque los nombres pueden variar según la versión del shapefile, normalmente encontrarás:
-
-- **geometry**: polígono geoespacial que delimita el área quemada.  
+- **geometry**: polígono del área quemada.  
 - **AREA_HA / BA_HA / BURN_AREA**: superficie quemada en hectáreas.  
-- **YEAR / BA_YEAR / FIRE_YEAR**: año del incendio.  
-- **NUTS_ID / NUTS_NAME**: código/nombre de la unidad administrativa europea (región).  
-- **ADM_NAME / provincia / municipio**: nombre de la unidad administrativa (según país).  
-
-En esta página nos centramos sobre todo en:
-- **el área quemada (ha)** → para medir la severidad,  
-- **las columnas de tipo texto** → para agrupar por región, provincia, etc.
+- **YEAR / FIRE_YEAR**: año del incendio.  
+- **NUTS_NAME / ADM_NAME**: región o entidad administrativa.  
 """
         )
 
-    st.subheader("📋 Muestra de datos EFFIS (atributos no geométricos)")
+    # -----------------------------------------------------
+    # MUESTRA DE DATOS
+    # -----------------------------------------------------
+    st.subheader("📋 Muestra de datos EFFIS (sin geometría)")
     attrs = gdf_effis.drop(columns=["geometry"], errors="ignore")
     st.dataframe(attrs.head(20), use_container_width=True)
 
-    # Detectar columna de área en hectáreas
-    area_candidates = [
-        c for c in attrs.columns if "area" in c.lower() and "ha" in c.lower()
-    ]
-    if not area_candidates:
-        for cand in ["AREA_HA", "BA_HA", "BURN_AREA", "BAAREA"]:
-            if cand in attrs.columns:
-                area_candidates = [cand]
-                break
+    # -----------------------------------------------------
+    # MÉTRICAS BÁSICAS
+    # -----------------------------------------------------
+    area_candidates = [c for c in attrs.columns if "area" in c.lower() and "ha" in c.lower()]
     area_col = area_candidates[0] if area_candidates else None
 
-    # Métricas básicas
     c1, c2 = st.columns(2)
     if area_col:
-        area_numeric = pd.to_numeric(attrs[area_col], errors="coerce")
-        area_total = area_numeric.sum()
+        area_total = pd.to_numeric(attrs[area_col], errors="coerce").sum()
         c1.metric("Área total quemada (ha)", f"{area_total:,.1f}")
     else:
         c1.metric("Área total quemada (ha)", "N/D")
 
     c2.metric("Número de polígonos", f"{len(attrs):,}")
 
-    # Ranking por entidad
+    # -----------------------------------------------------
+    # RANKING
+    # -----------------------------------------------------
     st.subheader("🏅 Entidades con mayor área quemada (Copernicus)")
 
     if area_col:
         cat_cols = attrs.select_dtypes(include="object").columns.tolist()
 
         if cat_cols:
-            candidatos_nombre = [
-                "NAME",
-                "name",
-                "NUTS_NAME",
-                "NUTS_ID",
-                "ADM_NAME",
-                "provincia",
-                "municipio",
-            ]
-            default_col = None
-            for cand in candidatos_nombre:
-                if cand in cat_cols:
-                    default_col = cand
-                    break
-            if default_col is None:
-                default_col = cat_cols[0]
-
             group_col = st.selectbox(
                 "Agrupar por:",
                 options=cat_cols,
-                index=cat_cols.index(default_col),
-                help="Columna categórica usada para agrupar el área quemada.",
+                index=0,
             )
 
-            area_numeric = pd.to_numeric(attrs[area_col], errors="coerce")
-
             ranking = (
-                attrs.assign(_area=area_numeric)
+                attrs.assign(_area=pd.to_numeric(attrs[area_col], errors="coerce"))
                 .groupby(group_col, as_index=False)
                 .agg(area_total=("_area", "sum"))
                 .sort_values("area_total", ascending=False)
@@ -385,14 +353,9 @@ En esta página nos centramos sobre todo en:
             )
             st.altair_chart(chart_rank, use_container_width=True)
         else:
-            st.info(
-                "No se han encontrado columnas de texto para agrupar (nombre de provincia, NUTS, etc.)."
-            )
+            st.info("No hay columnas categóricas para agrupar.")
     else:
-        st.info(
-            "No se ha identificado una columna de área en hectáreas, por lo que no se puede construir el ranking."
-        )
-
+        st.info("No se ha detectado columna de área quemada.")
 # =========================================================
 # 3) TAB OPEN-METEO HISTÓRICO (openmeteo_historico.csv)
 # =========================================================
@@ -858,6 +821,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
