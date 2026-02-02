@@ -223,152 +223,8 @@ with tab_firms:
 # 2) TAB COPERNICUS EFFIS – PERÍMETROS DE INCENDIOS (MONGO)
 # =========================================================
 
-import pandas as pd
-import geopandas as gpd
-import altair as alt
-import streamlit as st
-from pymongo import MongoClient
-from shapely.geometry import shape
-
-# ---------------------------------------------------------
-# FUNCIÓN DE CARGA DESDE MONGO (MISMO PATRÓN QUE FIRMS)
-# ---------------------------------------------------------
-@st.cache_data(show_spinner=True)
-def load_copernicus_from_mongo() -> gpd.GeoDataFrame:
-    """
-    Carga los perímetros Copernicus EFFIS desde MongoDB.
-    Colección esperada: incendios_espana.copernicus_effis
-    """
-
-    client = MongoClient(st.secrets["MONGO"]["URI"])
-    db = client["incendios_espana"]
-    col = db["copernicus_effis"]
-
-    docs = list(col.find({}, {"_id": 0}))
-    if not docs:
-        return gpd.GeoDataFrame()
-
-    geometries = [shape(d.pop("geometry")) for d in docs]
-    gdf = gpd.GeoDataFrame(docs, geometry=geometries, crs="EPSG:4326")
-
-    return gdf
 
 
-# ---------------------------------------------------------
-# TAB COPERNICUS
-# ---------------------------------------------------------
-with tab_cop:
-    st.header("🔥 Copernicus EFFIS – Área quemada y severidad")
-
-    st.markdown(
-        """
-Copernicus **EFFIS (European Forest Fire Information System)** proporciona los  
-**perímetros oficiales de incendios** en Europa.
-
-Cada fila representa un **polígono de área quemada**, con información
-temporal y administrativa.
-"""
-    )
-
-    # ------------------ CARGA ------------------
-    try:
-        gdf_effis = load_copernicus_from_mongo()
-    except Exception as e:
-        st.error(f"❌ No se pudo cargar Copernicus desde MongoDB: {e}")
-        st.stop()
-
-    if gdf_effis.empty:
-        st.warning("⚠️ No hay datos de Copernicus en MongoDB.")
-        st.stop()
-
-    st.success(f"Polígonos quemados: **{len(gdf_effis):,}**")
-
-    # ------------------ RANGO TEMPORAL ------------------
-    date_cols = [c for c in gdf_effis.columns if "date" in c.lower()]
-    year_cols = [c for c in gdf_effis.columns if "year" in c.lower()]
-
-    rango = None
-    if date_cols:
-        col = date_cols[0]
-        gdf_effis[col] = pd.to_datetime(gdf_effis[col], errors="coerce")
-        if gdf_effis[col].notna().any():
-            rango = f"{gdf_effis[col].min():%Y} – {gdf_effis[col].max():%Y}"
-    elif year_cols:
-        col = year_cols[0]
-        rango = f"{int(gdf_effis[col].min())} – {int(gdf_effis[col].max())}"
-
-    if rango:
-        st.caption(f"🗓️ Periodo disponible Copernicus EFFIS: **{rango}**")
-
-    # ------------------ EXPLICACIÓN ------------------
-    with st.expander("ℹ️ ¿Qué significan las columnas de Copernicus?"):
-        st.markdown(
-            """
-- **geometry** → polígono del incendio  
-- **AREA_HA / BA_HA / BURN_AREA** → área quemada (hectáreas)  
-- **YEAR / FIRE_YEAR** → año del incendio  
-- **NUTS_NAME / ADM_NAME / provincia** → unidad administrativa  
-"""
-        )
-
-    # ------------------ TABLA ------------------
-    st.subheader("📋 Muestra de datos Copernicus (sin geometría)")
-    attrs = gdf_effis.drop(columns=["geometry"], errors="ignore")
-    st.dataframe(attrs.head(20), use_container_width=True)
-
-    # ------------------ MÉTRICAS ------------------
-    area_candidates = [
-        c for c in attrs.columns if "area" in c.lower() and "ha" in c.lower()
-    ]
-    area_col = area_candidates[0] if area_candidates else None
-
-    c1, c2 = st.columns(2)
-
-    if area_col:
-        total_area = pd.to_numeric(attrs[area_col], errors="coerce").sum()
-        c1.metric("Área total quemada (ha)", f"{total_area:,.1f}")
-    else:
-        c1.metric("Área total quemada (ha)", "N/D")
-
-    c2.metric("Número de polígonos", f"{len(attrs):,}")
-
-    # ------------------ RANKING ------------------
-    st.subheader("🏅 Entidades con mayor área quemada (Copernicus)")
-
-    if area_col:
-        cat_cols = attrs.select_dtypes(include="object").columns.tolist()
-
-        if cat_cols:
-            group_col = st.selectbox(
-                "Agrupar por:",
-                options=cat_cols,
-                index=0,
-                help="Columna usada para agrupar el área quemada",
-            )
-
-            ranking = (
-                attrs.assign(_area=pd.to_numeric(attrs[area_col], errors="coerce"))
-                .groupby(group_col, as_index=False)
-                .agg(area_total=("_area", "sum"))
-                .sort_values("area_total", ascending=False)
-            )
-
-            chart = (
-                alt.Chart(ranking.head(15))
-                .mark_bar()
-                .encode(
-                    x=alt.X("area_total:Q", title="Área quemada total (ha)"),
-                    y=alt.Y(f"{group_col}:N", sort="-x", title=group_col),
-                    tooltip=[group_col, "area_total"],
-                )
-                .properties(height=400)
-            )
-
-            st.altair_chart(chart, use_container_width=True)
-        else:
-            st.info("No hay columnas categóricas para agrupar.")
-    else:
-        st.info("No se ha detectado columna de área quemada.")
 
 
 
@@ -837,6 +693,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
