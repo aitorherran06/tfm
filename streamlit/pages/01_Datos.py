@@ -397,22 +397,35 @@ de forma que cada fila representa el clima diario de una provincia.
 """
     )
 
-    @st.cache_data(show_spinner=True)
-    def load_openmeteo(path: str) -> pd.DataFrame:
-        # Leemos usando la columna 'time' como fecha
-        df_ = pd.read_csv(path, parse_dates=["time"])
+  @st.cache_data(show_spinner=True)
+def load_openmeteo(path: str) -> pd.DataFrame:
+    df_ = pd.read_csv(path)
 
-        # Renombramos a los nombres que usa el resto del panel
-        df_ = df_.rename(
-            columns={
-                "time": "date",
-                "temperature_2m_max": "meteo_temp_max",
-                "temperature_2m_min": "meteo_temp_min",
-                "relative_humidity_2m_min": "meteo_humidity_min",
-                "windspeed_10m_max": "meteo_wind_max",
-            }
+    # --- detectar columna de fecha ---
+    if "time" in df_.columns:
+        df_["date"] = pd.to_datetime(df_["time"], errors="coerce")
+    elif "date" in df_.columns:
+        df_["date"] = pd.to_datetime(df_["date"], errors="coerce")
+    elif "datetime" in df_.columns:
+        df_["date"] = pd.to_datetime(df_["datetime"], errors="coerce")
+    elif "fecha" in df_.columns:
+        df_["date"] = pd.to_datetime(df_["fecha"], errors="coerce")
+    else:
+        raise ValueError(
+            "No se encontró ninguna columna de fecha (time/date/datetime/fecha)"
         )
-        return df_
+
+    # --- renombrado estándar ---
+    df_ = df_.rename(
+        columns={
+            "temperature_2m_max": "meteo_temp_max",
+            "temperature_2m_min": "meteo_temp_min",
+            "relative_humidity_2m_min": "meteo_humidity_min",
+            "windspeed_10m_max": "meteo_wind_max",
+        }
+    )
+
+    return df_
 
     try:
         df_met = load_openmeteo(OPENMETEO_CSV)
@@ -848,4 +861,5 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
