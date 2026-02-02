@@ -383,8 +383,7 @@ with tab_cop:
 # =========================================================
 # 3) TAB OPEN-METEO HISTÓRICO
 # =========================================================
-
-@st.cache_data(show_spinner=True)
+@st.cache_data(show_spinner=True, ttl=0)
 def load_openmeteo(path: str) -> pd.DataFrame:
     df_ = pd.read_csv(path)
 
@@ -846,6 +845,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
