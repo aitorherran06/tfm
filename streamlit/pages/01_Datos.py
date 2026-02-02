@@ -381,7 +381,7 @@ with tab_cop:
 
 
 # =========================================================
-# 3) TAB OPEN-METEO HISTÓRICO (openmeteo_historico.csv)
+# 3) TAB OPEN-METEO HISTÓRICO
 # =========================================================
 
 OPENMETEO_CSV = "data/openmeteo_historico.csv"
@@ -397,39 +397,9 @@ de forma que cada fila representa el clima diario de una provincia.
 """
     )
 
-  @st.cache_data(show_spinner=True)
-def load_openmeteo(path: str) -> pd.DataFrame:
-    df_ = pd.read_csv(path)
-
-    # --- detectar columna de fecha ---
-    if "time" in df_.columns:
-        df_["date"] = pd.to_datetime(df_["time"], errors="coerce")
-    elif "date" in df_.columns:
-        df_["date"] = pd.to_datetime(df_["date"], errors="coerce")
-    elif "datetime" in df_.columns:
-        df_["date"] = pd.to_datetime(df_["datetime"], errors="coerce")
-    elif "fecha" in df_.columns:
-        df_["date"] = pd.to_datetime(df_["fecha"], errors="coerce")
-    else:
-        raise ValueError(
-            "No se encontró ninguna columna de fecha (time/date/datetime/fecha)"
-        )
-
-    # --- renombrado estándar ---
-    df_ = df_.rename(
-        columns={
-            "temperature_2m_max": "meteo_temp_max",
-            "temperature_2m_min": "meteo_temp_min",
-            "relative_humidity_2m_min": "meteo_humidity_min",
-            "windspeed_10m_max": "meteo_wind_max",
-        }
-    )
-
-    return df_
-
     try:
         df_met = load_openmeteo(OPENMETEO_CSV)
-    #    st.caption(f"📂 Archivo cargado: `{OPENMETEO_CSV}`")
+
         st.success(f"Registros provincia–día: **{len(df_met):,}**")
 
         if df_met["date"].notna().any():
@@ -441,18 +411,20 @@ def load_openmeteo(path: str) -> pd.DataFrame:
             )
         else:
             st.caption("🗓️ Periodo disponible Open-Meteo: no hay fechas válidas.")
+
     except Exception as e:
         st.error(f"❌ No se pudo cargar Open-Meteo: {e}")
+        st.info("Revisa el CSV y el nombre de la columna de fecha.")
         st.stop()
 
     with st.expander("ℹ️ ¿Qué significan las columnas de Open-Meteo?"):
         st.markdown(
             """
-- **date**: día al que corresponde la predicción/observación.  
-- **provincia**: provincia asociada a las coordenadas usadas.  
+- **date**: día al que corresponde la observación.  
+- **provincia**: provincia asociada a las coordenadas.  
 - **meteo_temp_max / meteo_temp_min**: temperatura máxima y mínima diarias (°C).  
-- **meteo_humidity_min**: humedad relativa mínima del día (%); valores bajos indican sequedad.  
-- **meteo_wind_max**: velocidad máxima del viento (10 m) durante el día.  
+- **meteo_humidity_min**: humedad relativa mínima del día (%).  
+- **meteo_wind_max**: velocidad máxima del viento (10 m).
 """
         )
 
@@ -469,31 +441,38 @@ def load_openmeteo(path: str) -> pd.DataFrame:
     st.dataframe(df_met[cols_met_sample].head(20), use_container_width=True)
 
     c1, c2, c3, c4 = st.columns(4)
+
+    c1.metric(
+        "Temp. máxima media",
+        f"{df_met['meteo_temp_max'].mean():.1f} °C"
+        if "meteo_temp_max" in df_met.columns
+        else "N/D",
+    )
+
+    c2.metric(
+        "Temp. mínima media",
+        f"{df_met['meteo_temp_min'].mean():.1f} °C"
+        if "meteo_temp_min" in df_met.columns
+        else "N/D",
+    )
+
+    c3.metric(
+        "Humedad mínima media",
+        f"{df_met['meteo_humidity_min'].mean():.1f} %"
+        if "meteo_humidity_min" in df_met.columns
+        else "N/D",
+    )
+
+    c4.metric(
+        "Viento máx. medio",
+        f"{df_met['meteo_wind_max'].mean():.1f} km/h"
+        if "meteo_wind_max" in df_met.columns
+        else "N/D",
+    )
+
+    # -------- SERIES --------
     if "meteo_temp_max" in df_met.columns:
-        c1.metric("Temp. máxima media", f"{df_met['meteo_temp_max'].mean():.1f} °C")
-    else:
-        c1.metric("Temp. máxima media", "N/D")
-
-    if "meteo_temp_min" in df_met.columns:
-        c2.metric("Temp. mínima media", f"{df_met['meteo_temp_min'].mean():.1f} °C")
-    else:
-        c2.metric("Temp. mínima media", "N/D")
-
-    if "meteo_humidity_min" in df_met.columns:
-        c3.metric(
-            "Humedad mínima media", f"{df_met['meteo_humidity_min'].mean():.1f} %"
-        )
-    else:
-        c3.metric("Humedad mínima media", "N/D")
-
-    if "meteo_wind_max" in df_met.columns:
-        c4.metric("Viento máx. medio", f"{df_met['meteo_wind_max'].mean():.1f} km/h")
-    else:
-        c4.metric("Viento máx. medio", "N/D")
-
-    # Temperatura máxima media por mes
-    if "meteo_temp_max" in df_met.columns:
-        st.subheader("📈 Temperatura máxima media por mes (promedio de todos los años)")
+        st.subheader("📈 Temperatura máxima media por mes")
 
         df_met["month"] = df_met["date"].dt.month
         df_met["month_name"] = df_met["date"].dt.strftime("%b")
@@ -512,68 +491,18 @@ def load_openmeteo(path: str) -> pd.DataFrame:
                     "month_name:N",
                     title="Mes",
                     sort=[
-                        "Jan",
-                        "Feb",
-                        "Mar",
-                        "Apr",
-                        "May",
-                        "Jun",
-                        "Jul",
-                        "Aug",
-                        "Sep",
-                        "Oct",
-                        "Nov",
-                        "Dec",
+                        "Jan","Feb","Mar","Apr","May","Jun",
+                        "Jul","Aug","Sep","Oct","Nov","Dec",
                     ],
                 ),
                 y=alt.Y("temp_max_mean:Q", title="Temp. máxima media (°C)"),
-                tooltip=[
-                    alt.Tooltip("month_name:N", title="Mes"),
-                    alt.Tooltip(
-                        "temp_max_mean:Q", title="Temp. media máx.", format=".1f"
-                    ),
-                ],
             )
             .properties(height=300)
-            .interactive()
         )
 
         st.altair_chart(chart_month, use_container_width=True)
 
-        st.markdown("---")
 
-        # Temperatura máxima media por año
-        st.subheader("📈 Temperatura máxima media por año")
-
-        df_met["year"] = df_met["date"].dt.year
-
-        yearly_temp = (
-            df_met.groupby("year", as_index=False)
-            .agg(temp_max_mean=("meteo_temp_max", "mean"))
-            .sort_values("year")
-        )
-
-        chart_year_temp = (
-            alt.Chart(yearly_temp)
-            .mark_line(point=True)
-            .encode(
-                x=alt.X("year:O", title="Año"),
-                y=alt.Y("temp_max_mean:Q", title="Temp. máxima media (°C)"),
-                tooltip=[
-                    alt.Tooltip("year:O", title="Año"),
-                    alt.Tooltip(
-                        "temp_max_mean:Q", title="Temp. media máx.", format=".1f"
-                    ),
-                ],
-            )
-            .properties(height=300)
-            .interactive()
-        )
-        st.altair_chart(chart_year_temp, use_container_width=True)
-    else:
-        st.info(
-            "La columna 'meteo_temp_max' no está disponible; no se generan las series de temperatura."
-        )
 
 # =========================================================
 # 4) TAB DATOS CRONJOBS (AEMET + FIRMS actualizado)
@@ -861,5 +790,6 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
