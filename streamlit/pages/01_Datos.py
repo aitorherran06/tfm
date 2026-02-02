@@ -421,11 +421,9 @@ def load_openmeteo(path: str) -> pd.DataFrame:
     return df_
 
 
-
 OPENMETEO_CSV = (
-    "https://github.com/aitorherran06/tfm/blob/main/data/openmeteo_historico.csv"
+    "https://raw.githubusercontent.com/aitorherran06/tfm/main/data/openmeteo_historico.csv"
 )
-
 
 with tab_openmeteo:
     st.header("🌦️ Open-Meteo – Meteorología histórica")
@@ -845,6 +843,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
