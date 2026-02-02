@@ -221,206 +221,137 @@ with tab_firms:
 
 
 
-
-
-
 # =========================================================
-# 2 - COPERNICUS EFFIS – INCENDIOS FORESTALES EN ESPAÑA
+# 2) TAB COPERNICUS EFFIS
 # =========================================================
+with tab_cop:
 
-import streamlit as st
-import pandas as pd
-import geopandas as gpd
-import pydeck as pdk
-import json
-from pymongo import MongoClient
-from shapely.geometry import shape
+    st.header("🔥 Copernicus EFFIS – Incendios forestales en España")
 
-# =========================================================
-# CONFIG
-# =========================================================
+    st.markdown(
+        """
+        Perímetros oficiales de incendios forestales (**Copernicus EFFIS**).
 
-MONGO_URI = st.secrets["MONGO"]["URI"]
-DB_NAME = "incendios_espana"
-COLLECTION = "copernicus_effis"
-
-st.set_page_config(
-    page_title="Copernicus EFFIS – Incendios en España",
-    layout="wide",
-)
-
-# =========================================================
-# CARGA COMPLETA (CON GEOMETRÍA)
-# =========================================================
-
-@st.cache_data(show_spinner=True)
-def load_copernicus_spain() -> gpd.GeoDataFrame:
-    client = MongoClient(MONGO_URI)
-    col = client[DB_NAME][COLLECTION]
-
-    docs = list(col.find({}, {"_id": 0}))
-    if not docs:
-        return gpd.GeoDataFrame()
-
-    geometries = [shape(d.pop("geometry")) for d in docs]
-    return gpd.GeoDataFrame(docs, geometry=geometries, crs="EPSG:4326")
-
-# =========================================================
-# UI
-# =========================================================
-
-st.header("🔥 Copernicus EFFIS – Incendios forestales en España")
-
-st.markdown(
-    """
-Perímetros oficiales de incendios forestales (**Copernicus EFFIS**).
-
-- 🇪🇸 Dataset limitado a España  
-- 🗺️ Polígonos reales  
-- ⚡ Geometría simplificada  
-"""
-)
-
-# =========================================================
-# CARGA DATASET
-# =========================================================
-
-gdf = load_copernicus_spain()
-
-if gdf.empty:
-    st.warning("No hay datos Copernicus en MongoDB.")
-    st.stop()
-
-st.success(f"Incendios cargados: **{len(gdf):,}**")
-
-# =========================================================
-# NORMALIZACIÓN
-# =========================================================
-
-gdf["YEAR"] = pd.to_numeric(gdf["YEAR"], errors="coerce")
-gdf["AREA_HA"] = pd.to_numeric(gdf["AREA_HA"], errors="coerce")
-
-# =========================================================
-# FILTROS
-# =========================================================
-
-st.subheader("🔎 Filtros")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    year_sel = st.selectbox(
-        "Año",
-        sorted(gdf["YEAR"].dropna().unique()),
+        - 🇪🇸 Dataset limitado a España  
+        - 🗺️ Polígonos reales  
+        - ⚡ Geometría simplificada  
+        """
     )
 
-with col2:
-    prov_sel = st.selectbox(
-        "Provincia",
-        ["Todas"] + sorted(gdf["PROVINCE"].dropna().unique()),
-    )
+    # =========================
+    # CARGA DATASET
+    # =========================
+    @st.cache_data(show_spinner=True)
+    def load_copernicus_spain() -> gpd.GeoDataFrame:
+        client = MongoClient(st.secrets["MONGO"]["URI"])
+        col = client["incendios_espana"]["copernicus_effis"]
 
-gdf_filt = gdf[gdf["YEAR"] == year_sel]
+        docs = list(col.find({}, {"_id": 0}))
+        if not docs:
+            return gpd.GeoDataFrame()
 
-if prov_sel != "Todas":
-    gdf_filt = gdf_filt[gdf_filt["PROVINCE"] == prov_sel]
+        geometries = [shape(d.pop("geometry")) for d in docs]
+        return gpd.GeoDataFrame(docs, geometry=geometries, crs="EPSG:4326")
 
-st.caption(f"Incendios mostrados: **{len(gdf_filt):,}**")
+    gdf = load_copernicus_spain()
 
-# =========================================================
-# MÉTRICAS
-# =========================================================
+    if gdf.empty:
+        st.warning("No hay datos Copernicus en MongoDB.")
+        st.stop()
 
-c1, c2 = st.columns(2)
+    st.success(f"Incendios cargados: **{len(gdf):,}**")
 
-c1.metric(
-    "Área total quemada (ha)",
-    f"{gdf_filt['AREA_HA'].sum():,.0f}",
-)
+    # =========================
+    # NORMALIZACIÓN
+    # =========================
+    gdf["YEAR"] = pd.to_numeric(gdf["YEAR"], errors="coerce")
+    gdf["AREA_HA"] = pd.to_numeric(gdf["AREA_HA"], errors="coerce")
 
-c2.metric(
-    "Número de incendios",
-    f"{len(gdf_filt):,}",
-)
+    # =========================
+    # FILTROS
+    # =========================
+    col1, col2 = st.columns(2)
 
-# =========================================================
-# MAPA – PYDECK FINAL (CON MAPA BASE VISIBLE)
-# =========================================================
+    with col1:
+        year_sel = st.selectbox(
+            "Año",
+            sorted(gdf["YEAR"].dropna().unique()),
+        )
 
-import pydeck as pdk
-import json
+    with col2:
+        prov_sel = st.selectbox(
+            "Provincia",
+            ["Todas"] + sorted(gdf["PROVINCE"].dropna().unique()),
+        )
 
-st.subheader("🗺️ Mapa de perímetros quemados")
+    gdf_filt = gdf[gdf["YEAR"] == year_sel]
+    if prov_sel != "Todas":
+        gdf_filt = gdf_filt[gdf_filt["PROVINCE"] == prov_sel]
 
-if not gdf_filt.empty:
+    st.caption(f"Incendios mostrados: **{len(gdf_filt):,}**")
 
-    # 1️⃣ Copia segura
-    gdf_map = gdf_filt.copy()
+    # =========================
+    # MAPA (SOLO COPERNICUS)
+    # =========================
+    st.subheader("🗺️ Mapa de perímetros quemados")
 
-    # 2️⃣ Convertir fechas a string (EVITA ERROR JSON)
-    for col in ["FIREDATE", "LASTUPDATE"]:
-        if col in gdf_map.columns:
-            gdf_map[col] = gdf_map[col].astype(str)
+    if not gdf_filt.empty:
 
-    # 3️⃣ A GeoJSON
-    geojson = json.loads(gdf_map.to_json())
+        gdf_map = gdf_filt.copy()
+        for col in ["FIREDATE", "LASTUPDATE"]:
+            if col in gdf_map.columns:
+                gdf_map[col] = gdf_map[col].astype(str)
 
-    # 4️⃣ Capa de incendios
-    layer = pdk.Layer(
-        "GeoJsonLayer",
-        geojson,
-        pickable=True,
-        filled=True,
-        stroked=True,
-        get_fill_color=[220, 20, 20, 140],   # 🔴 rojo incendio
-        get_line_color=[120, 0, 0, 220],
-        line_width_min_pixels=1,
-    )
+        geojson = json.loads(gdf_map.to_json())
 
-    # 5️⃣ Centro automático
-    centroid = gdf_map.geometry.unary_union.centroid
+        layer = pdk.Layer(
+            "GeoJsonLayer",
+            geojson,
+            pickable=True,
+            filled=True,
+            stroked=True,
+            get_fill_color=[220, 20, 20, 140],
+            get_line_color=[120, 0, 0, 220],
+            line_width_min_pixels=1,
+        )
 
-    view_state = pdk.ViewState(
-        latitude=centroid.y,
-        longitude=centroid.x,
-        zoom=6,
-        pitch=0,
-    )
+        centroid = gdf_map.geometry.unary_union.centroid
 
-    # 6️⃣ Deck con MAPA BASE REAL
-    deck = pdk.Deck(
-        layers=[layer],
-        initial_view_state=view_state,
-        map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-        tooltip={
-            "html": """
-            <b>Provincia:</b> {PROVINCE}<br/>
-            <b>Año:</b> {YEAR}<br/>
-            <b>Área quemada (ha):</b> {AREA_HA}<br/>
-            <b>Fecha:</b> {FIREDATE}
-            """
-        },
-    )
+        view_state = pdk.ViewState(
+            latitude=centroid.y,
+            longitude=centroid.x,
+            zoom=6,
+            pitch=0,
+        )
 
-    st.pydeck_chart(deck, use_container_width=True)
+        deck = pdk.Deck(
+            layers=[layer],
+            initial_view_state=view_state,
+            map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+            tooltip={
+                "html": """
+                <b>Provincia:</b> {PROVINCE}<br/>
+                <b>Año:</b> {YEAR}<br/>
+                <b>Área quemada (ha):</b> {AREA_HA}<br/>
+                <b>Fecha:</b> {FIREDATE}
+                """
+            },
+        )
 
-else:
-    st.info("No hay incendios para los filtros seleccionados.")
+        st.pydeck_chart(deck, use_container_width=True)
 
+    else:
+        st.info("No hay incendios para los filtros seleccionados.")
 
-
-# =========================================================
-# TABLA
-# =========================================================
-
-with st.expander("📋 Ver tabla de atributos"):
-    st.dataframe(
-        gdf_filt.drop(columns="geometry")
-        .sort_values("AREA_HA", ascending=False),
-        use_container_width=True,
-    )
-
-
+    # =========================
+    # TABLA
+    # =========================
+    with st.expander("📋 Ver tabla de atributos"):
+        st.dataframe(
+            gdf_filt.drop(columns="geometry")
+            .sort_values("AREA_HA", ascending=False),
+            use_container_width=True,
+        )
 
 
 
@@ -890,6 +821,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
