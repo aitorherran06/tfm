@@ -380,43 +380,39 @@ with tab_cop:
         
         
 
-
 # =========================================================
 # 3) TAB OPEN-METEO HISTÓRICO
 # =========================================================
 
 @st.cache_data(show_spinner=True)
-def load_openmeteo(url: str) -> pd.DataFrame:
-    # Descargar CSV desde GitHub RAW
-    r = requests.get(url, timeout=30)
-    r.raise_for_status()
+def load_openmeteo(path: str) -> pd.DataFrame:
+    """
+    Carga el CSV histórico de Open-Meteo desde el repositorio.
+    """
 
-    # Protección contra Git LFS pointer
-    if r.text.startswith("version https://git-lfs.github.com"):
-        raise ValueError(
-            "Se ha recibido un puntero Git LFS en lugar del CSV real. "
-            "Revisa que el archivo no esté trackeado por LFS."
-        )
+    # Leer CSV local
+    df_ = pd.read_csv(
+        path,
+        parse_dates=["time"]
+    )
 
-    # Leer CSV desde texto
-    df_ = pd.read_csv(StringIO(r.text))
-
-    # Limpiar nombres de columnas
+    # Limpiar nombres de columnas (BOM, espacios, etc.)
     df_.columns = (
         df_.columns
         .str.replace("\ufeff", "", regex=False)
         .str.strip()
     )
 
-    # Columna de fecha (Open-Meteo usa 'time')
+    # Comprobación columna de fecha
     if "time" not in df_.columns:
         raise ValueError(
             f"No existe columna 'time'. Columnas disponibles: {list(df_.columns)}"
         )
 
-    df_["date"] = pd.to_datetime(df_["time"], errors="coerce")
+    # Columna estándar de fecha
+    df_["date"] = df_["time"]
 
-    # Renombrado estándar para el proyecto
+    # Renombrado estándar del proyecto
     df_ = df_.rename(
         columns={
             "temperature_2m_max": "meteo_temp_max",
@@ -429,8 +425,8 @@ def load_openmeteo(url: str) -> pd.DataFrame:
     return df_
 
 
-
-OPENMETEO_CSV = "https://raw.githubusercontent.com/aitorherran06/tfm/main/data/openmeteo_historico.csv"
+# Ruta LOCAL al CSV (en el repo)
+OPENMETEO_CSV = "data/openmeteo_historico.csv"
 
 
 with tab_openmeteo:
@@ -439,7 +435,8 @@ with tab_openmeteo:
     st.markdown(
         """
 Open-Meteo proporciona **series históricas de meteorología** a partir de coordenadas.  
-Los datos están **agregados por provincia y día**.
+Los datos están **agregados por provincia y día**, por lo que cada fila representa
+un día completo para una provincia.
 """
     )
 
@@ -471,7 +468,10 @@ Los datos están **agregados por provincia y día**.
     ]
     cols = [c for c in cols if c in df_met.columns]
 
-    st.dataframe(df_met[cols].head(20), use_container_width=True)
+    st.dataframe(
+        df_met[cols].head(20),
+        use_container_width=True,
+    )
 
     # ---------- MÉTRICAS ----------
     st.subheader("📊 Indicadores básicos")
@@ -510,7 +510,8 @@ Los datos están **agregados por provincia y día**.
         df_met["month_name"] = df_met["date"].dt.strftime("%b")
 
         monthly = (
-            df_met.groupby(["month", "month_name"], as_index=False)
+            df_met
+            .groupby(["month", "month_name"], as_index=False)
             .agg(temp_max_mean=("meteo_temp_max", "mean"))
             .sort_values("month")
         )
@@ -521,15 +522,23 @@ Los datos están **agregados por provincia y día**.
             .encode(
                 x=alt.X(
                     "month_name:N",
-                    sort=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+                    sort=[
+                        "Jan","Feb","Mar","Apr","May","Jun",
+                        "Jul","Aug","Sep","Oct","Nov","Dec"
+                    ],
                     title="Mes",
                 ),
-                y=alt.Y("temp_max_mean:Q", title="Temp. máxima media (°C)"),
+                y=alt.Y(
+                    "temp_max_mean:Q",
+                    title="Temp. máxima media (°C)"
+                ),
             )
             .properties(height=300)
         )
 
         st.altair_chart(chart, use_container_width=True)
+
+
 
 # =========================================================
 # 4) TAB DATOS CRONJOBS (AEMET + FIRMS actualizado)
@@ -817,6 +826,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
