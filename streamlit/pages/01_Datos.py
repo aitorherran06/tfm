@@ -223,7 +223,7 @@ with tab_firms:
 
 
 # =========================================================
-# COPERNICUS EFFIS – INCENDIOS EN ESPAÑA
+# 2 - COPERNICUS EFFIS – INCENDIOS EN ESPAÑA (MAPA DIRECTO)
 # =========================================================
 
 import streamlit as st
@@ -241,42 +241,22 @@ DB_NAME = "incendios_espana"
 COLLECTION = "copernicus_effis"
 
 # =========================================================
-# CARGA DE ATRIBUTOS (SIN GEOMETRÍA)
+# CARGA COMPLETA (CON GEOMETRÍA)
 # =========================================================
 
 @st.cache_data(show_spinner=True)
-def load_copernicus_attrs() -> pd.DataFrame:
+def load_copernicus_spain() -> gpd.GeoDataFrame:
     client = MongoClient(MONGO_URI)
     col = client[DB_NAME][COLLECTION]
 
-    docs = list(
-        col.find(
-            {},
-            {
-                "_id": 0,
-                "geometry": 0,  # 🔑 nunca geometría aquí
-            },
-        )
-    )
-
-    return pd.DataFrame(docs)
-
-
-# =========================================================
-# CARGA DE GEOMETRÍA (BAJO DEMANDA)
-# =========================================================
-
-@st.cache_data(show_spinner=True)
-def load_copernicus_geometry(query: dict) -> gpd.GeoDataFrame:
-    client = MongoClient(MONGO_URI)
-    col = client[DB_NAME][COLLECTION]
-
-    docs = list(col.find(query, {"_id": 0}))
+    docs = list(col.find({}, {"_id": 0}))
     if not docs:
         return gpd.GeoDataFrame()
 
     geometries = [shape(d.pop("geometry")) for d in docs]
-    return gpd.GeoDataFrame(docs, geometry=geometries, crs="EPSG:4326")
+    gdf = gpd.GeoDataFrame(docs, geometry=geometries, crs="EPSG:4326")
+
+    return gdf
 
 
 # =========================================================
@@ -287,32 +267,32 @@ st.header("🔥 Copernicus EFFIS – Incendios forestales en España")
 
 st.markdown(
     """
-Copernicus **EFFIS** proporciona los **perímetros oficiales de incendios forestales**.
+Perímetros oficiales de incendios forestales (**Copernicus EFFIS**).
 
 - 🇪🇸 Dataset **limitado a España**
-- 📋 Atributos completos
-- 🗺️ Geometría **solo cuando el usuario la solicita**
+- 🗺️ Geometría simplificada
+- 🚀 Mapa interactivo desde el inicio
 """
 )
 
 # =========================================================
-# CARGA PRINCIPAL
+# CARGA DATASET
 # =========================================================
 
-attrs = load_copernicus_attrs()
+gdf = load_copernicus_spain()
 
-if attrs.empty:
+if gdf.empty:
     st.warning("No hay datos Copernicus en MongoDB.")
     st.stop()
 
-st.success(f"Incendios registrados en España: **{len(attrs):,}**")
+st.success(f"Incendios cargados: **{len(gdf):,}**")
 
 # =========================================================
 # NORMALIZACIÓN
 # =========================================================
 
-attrs["YEAR"] = pd.to_numeric(attrs["YEAR"], errors="coerce")
-attrs["AREA_HA"] = pd.to_numeric(attrs["AREA_HA"], errors="coerce")
+gdf["YEAR"] = pd.to_numeric(gdf["YEAR"], errors="coerce")
+gdf["AREA_HA"] = pd.to_numeric(gdf["AREA_HA"], errors="coerce")
 
 # =========================================================
 # FILTROS
@@ -325,32 +305,21 @@ col1, col2 = st.columns(2)
 with col1:
     year_sel = st.selectbox(
         "Año",
-        sorted(attrs["YEAR"].dropna().unique())
+        sorted(gdf["YEAR"].dropna().unique())
     )
 
 with col2:
     prov_sel = st.selectbox(
         "Provincia",
-        ["Todas"] + sorted(attrs["PROVINCE"].dropna().unique())
+        ["Todas"] + sorted(gdf["PROVINCE"].dropna().unique())
     )
 
-filtered = attrs[attrs["YEAR"] == year_sel]
+gdf_filt = gdf[gdf["YEAR"] == year_sel]
 
 if prov_sel != "Todas":
-    filtered = filtered[filtered["PROVINCE"] == prov_sel]
+    gdf_filt = gdf_filt[gdf_filt["PROVINCE"] == prov_sel]
 
-st.caption(f"Incendios seleccionados: **{len(filtered):,}**")
-
-# =========================================================
-# TABLA
-# =========================================================
-
-st.subheader("📋 Incendios Copernicus (atributos)")
-
-st.dataframe(
-    filtered.sort_values("AREA_HA", ascending=False),
-    use_container_width=True
-)
+st.caption(f"Incendios mostrados: **{len(gdf_filt):,}**")
 
 # =========================================================
 # MÉTRICAS
@@ -360,45 +329,32 @@ c1, c2 = st.columns(2)
 
 c1.metric(
     "Área total quemada (ha)",
-    f"{filtered['AREA_HA'].sum():,.0f}"
+    f"{gdf_filt['AREA_HA'].sum():,.0f}"
 )
 
 c2.metric(
     "Número de incendios",
-    f"{len(filtered):,}"
+    f"{len(gdf_filt):,}"
 )
 
 # =========================================================
-# MAPA (GEOMETRÍA)
+# MAPA (DIRECTO)
 # =========================================================
 
-with st.expander("🗺️ Visualizar perímetros en el mapa"):
-    st.warning(
-        "La geometría se carga de forma controlada para evitar "
-        "problemas de rendimiento."
+st.subheader("🗺️ Mapa de perímetros quemados")
+
+st.map(gdf_filt)
+
+# =========================================================
+# TABLA (OPCIONAL)
+# =========================================================
+
+with st.expander("📋 Ver tabla de atributos"):
+    st.dataframe(
+        gdf_filt.drop(columns="geometry")
+        .sort_values("AREA_HA", ascending=False),
+        use_container_width=True
     )
-
-    max_geom = st.slider(
-        "Máx. incendios a mostrar",
-        min_value=20,
-        max_value=300,
-        value=100,
-        step=20,
-    )
-
-    if st.button("🔥 Cargar perímetros"):
-        query = {
-            "YEAR": int(year_sel)
-        }
-
-        if prov_sel != "Todas":
-            query["PROVINCE"] = prov_sel
-
-        gdf = load_copernicus_geometry(query).head(max_geom)
-
-        st.success(f"Perímetros cargados: {len(gdf)}")
-        st.map(gdf)
-
 
 
 
@@ -867,6 +823,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
