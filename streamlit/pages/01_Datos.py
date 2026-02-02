@@ -344,43 +344,42 @@ c2.metric(
 )
 
 # =========================================================
-# MAPA – PYDECK (CORREGIDO)
+# MAPA – PYDECK (POLÍGONOS MEJORADO)
 # =========================================================
 
 st.subheader("🗺️ Mapa de perímetros quemados")
 
 if not gdf_filt.empty:
+    # Convertimos a GeoJSON
+    geojson = json.loads(gdf_filt.to_json())
 
-    # ---- LIMPIEZA GEOJSON ----
-    gdf_map = gdf_filt.copy()
-    gdf_map = gdf_map.drop(
-        columns=[c for c in gdf_map.columns if "date" in c.lower()],
-        errors="ignore",
-    )
-
-    gdf_map["YEAR"] = gdf_map["YEAR"].astype(int)
-    gdf_map["AREA_HA"] = gdf_map["AREA_HA"].fillna(0).astype(float)
-
-    geojson = json.loads(gdf_map.to_json())
-
+    # 🔥 Capa de incendios
     layer = pdk.Layer(
         "GeoJsonLayer",
         geojson,
         pickable=True,
-        filled=True,
         stroked=True,
-        get_fill_color=[255, 70, 70, 120],
-        get_line_color=[150, 0, 0, 200],
-        line_width_min_pixels=1,
+        filled=True,
+        extruded=False,
+        get_fill_color=[255, 0, 0, 140],     # 🔴 rojo más visible
+        get_line_color=[255, 255, 255, 220], # ⚪ borde blanco
+        line_width_min_pixels=2,
+    )
+
+    # 📍 Centro automático del mapa
+    centroid = gdf_filt.geometry.unary_union.centroid
+
+    view_state = pdk.ViewState(
+        latitude=centroid.y,
+        longitude=centroid.x,
+        zoom=6,        # 🔍 mucho mejor que 5
+        pitch=0,
     )
 
     deck = pdk.Deck(
         layers=[layer],
-        initial_view_state=pdk.ViewState(
-            latitude=40.3,
-            longitude=-3.7,
-            zoom=5,
-        ),
+        initial_view_state=view_state,
+        map_style="mapbox://styles/mapbox/light-v11",  # 🌍 fondo claro
         tooltip={
             "html": """
             <b>Provincia:</b> {PROVINCE}<br/>
@@ -390,10 +389,11 @@ if not gdf_filt.empty:
         },
     )
 
-    st.pydeck_chart(deck)
+    st.pydeck_chart(deck, use_container_width=True)
 
 else:
     st.info("No hay incendios para los filtros seleccionados.")
+    
 
 # =========================================================
 # TABLA
@@ -876,6 +876,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
