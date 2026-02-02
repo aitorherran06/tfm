@@ -384,12 +384,18 @@ with tab_cop:
 # 3) TAB OPEN-METEO HISTÓRICO
 # =========================================================
 
-
 @st.cache_data(show_spinner=True)
 def load_openmeteo(path: str) -> pd.DataFrame:
     df_ = pd.read_csv(path)
 
-    # Detectar columna de fecha
+    # --- limpiar nombres de columnas (BOM, espacios, etc.) ---
+    df_.columns = (
+        df_.columns
+        .str.replace("\ufeff", "", regex=False)
+        .str.strip()
+    )
+
+    # --- detectar columna de fecha ---
     if "time" in df_.columns:
         df_["date"] = pd.to_datetime(df_["time"], errors="coerce")
     elif "date" in df_.columns:
@@ -400,10 +406,10 @@ def load_openmeteo(path: str) -> pd.DataFrame:
         df_["date"] = pd.to_datetime(df_["fecha"], errors="coerce")
     else:
         raise ValueError(
-            "No se encontró ninguna columna de fecha (time / date / datetime / fecha)"
+            f"No se encontró columna de fecha. Columnas disponibles: {list(df_.columns)}"
         )
 
-    # Renombrado estándar
+    # --- renombrado estándar ---
     df_ = df_.rename(
         columns={
             "temperature_2m_max": "meteo_temp_max",
@@ -837,6 +843,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
