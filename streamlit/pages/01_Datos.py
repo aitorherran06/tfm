@@ -423,7 +423,7 @@ def load_openmeteo(path: str) -> pd.DataFrame:
 
 
 OPENMETEO_CSV = (
-    "https://raw.githubusercontent.com/aitorherran06/tfm/main/data/openmeteo_historico.csv"
+    "https://github.com/aitorherran06/tfm/blob/main/data/openmeteo_historico.csv"
 )
 
 
