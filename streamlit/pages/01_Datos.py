@@ -234,24 +234,24 @@ from shapely.geometry import shape
 # FUNCIÓN DE CARGA DESDE MONGO (MISMO PATRÓN QUE FIRMS)
 # ---------------------------------------------------------
 @st.cache_data(show_spinner=True)
-def load_copernicus_from_mongo() -> pd.DataFrame:
+def load_copernicus_from_mongo() -> gpd.GeoDataFrame:
     """
-    Carga una muestra pequeña de Copernicus EFFIS (SIN geometría)
-    para evitar que Streamlit se caiga.
+    Carga los perímetros Copernicus EFFIS desde MongoDB.
+    Colección esperada: incendios_espana.copernicus_effis
     """
+
     client = MongoClient(st.secrets["MONGO"]["URI"])
     db = client["incendios_espana"]
     col = db["copernicus_effis"]
 
-    # ⚠️ SOLO 500 DOCUMENTOS Y SIN GEOMETRÍA
-    docs = list(
-        col.find(
-            {},
-            {"_id": 0, "geometry": 0}
-        ).limit(500)
-    )
+    docs = list(col.find({}, {"_id": 0}))
+    if not docs:
+        return gpd.GeoDataFrame()
 
-    return pd.DataFrame(docs)
+    geometries = [shape(d.pop("geometry")) for d in docs]
+    gdf = gpd.GeoDataFrame(docs, geometry=geometries, crs="EPSG:4326")
+
+    return gdf
 
 
 # ---------------------------------------------------------
@@ -369,7 +369,6 @@ temporal y administrativa.
             st.info("No hay columnas categóricas para agrupar.")
     else:
         st.info("No se ha detectado columna de área quemada.")
-
 
 
 
