@@ -221,13 +221,12 @@ with tab_firms:
 
 
 # =========================================================
-# 2) TAB COPERNICUS EFFIS – PERÍMETROS DE INCENDIOS (PAGINADO)
+# 2) TAB COPERNICUS EFFIS – DATASET COMPLETO (SEGURO)
 # =========================================================
 
 import pandas as pd
 import geopandas as gpd
 import streamlit as st
-import altair as alt
 from pymongo import MongoClient
 from shapely.geometry import shape
 
@@ -236,12 +235,11 @@ from shapely.geometry import shape
 # ---------------------------------------------------------
 
 @st.cache_data(show_spinner=True)
-def load_copernicus_attrs_page(page: int, page_size: int = 2000) -> pd.DataFrame:
+def load_copernicus_all_attrs() -> pd.DataFrame:
     """
-    Carga atributos Copernicus paginados (SIN geometría).
+    Carga TODOS los registros Copernicus SIN geometría.
+    Esto es estable en Streamlit Cloud.
     """
-    skip = (page - 1) * page_size
-
     client = MongoClient(st.secrets["MONGO"]["URI"])
     col = client["incendios_espana"]["copernicus_effis"]
 
@@ -250,11 +248,9 @@ def load_copernicus_attrs_page(page: int, page_size: int = 2000) -> pd.DataFrame
             {},
             {
                 "_id": 0,
-                "geometry": 0,  # 🔑 nunca geometría aquí
+                "geometry": 0,  # 🔑 clave: nunca cargar geometría aquí
             },
         )
-        .skip(skip)
-        .limit(page_size)
     )
 
     return pd.DataFrame(docs)
@@ -280,95 +276,59 @@ def load_copernicus_geometry(query: dict) -> gpd.GeoDataFrame:
 # TAB COPERNICUS
 # ---------------------------------------------------------
 with tab_cop:
-    st.header("🔥 Copernicus EFFIS – Área quemada")
+    st.header("🔥 Copernicus EFFIS – Área quemada (dataset completo)")
 
     st.markdown(
         """
 Copernicus **EFFIS (European Forest Fire Information System)** proporciona los  
 **perímetros oficiales de incendios forestales** en Europa.
 
-Para garantizar estabilidad:
-- 📦 Los **atributos se cargan paginados**
-- 🗺️ La **geometría se carga solo bajo demanda**
+🔹 En esta vista se muestran **todos los registros del dataset**  
+🔹 Se cargan **solo los atributos** para garantizar estabilidad  
+🔹 La **geometría se visualiza bajo demanda**
 """
     )
 
     # =========================
-    # 1) CONTROLES DE PAGINACIÓN
-    # =========================
-    st.subheader("📦 Navegación por el dataset")
-
-    PAGE_SIZE = 2000
-
-    page = st.number_input(
-        "Página",
-        min_value=1,
-        step=1,
-        value=1,
-        help=f"Cada página carga {PAGE_SIZE} registros",
-    )
-
-    # =========================
-    # 2) CARGA DE ATRIBUTOS
+    # CARGA GLOBAL
     # =========================
     try:
-        attrs = load_copernicus_attrs_page(page=page, page_size=PAGE_SIZE)
+        attrs = load_copernicus_all_attrs()
     except Exception as e:
-        st.error(f"❌ Error cargando Copernicus: {e}")
+        st.error(f"❌ Error cargando Copernicus desde MongoDB: {e}")
         st.stop()
 
     if attrs.empty:
-        st.warning("⚠️ No hay más registros en esta página.")
+        st.warning("⚠️ No hay datos Copernicus en MongoDB.")
         st.stop()
 
-    st.success(
-        f"Registros cargados: **{len(attrs):,}** "
-        f"(página {page})"
-    )
+    st.success(f"Incendios registrados: **{len(attrs):,}**")
 
     # =========================
-    # 3) FILTROS
+    # RANGO TEMPORAL
     # =========================
-    st.subheader("🔎 Filtros")
-
     year_cols = [c for c in attrs.columns if "year" in c.lower()]
-    year_col = year_cols[0] if year_cols else None
-
-    years = (
-        sorted(attrs[year_col].dropna().unique())
-        if year_col
-        else []
-    )
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        year_sel = (
-            st.selectbox("Año", options=years)
-            if years
-            else None
+    if year_cols:
+        ycol = year_cols[0]
+        st.caption(
+            f"🗓️ Periodo disponible: "
+            f"**{int(attrs[ycol].min())} – {int(attrs[ycol].max())}**"
         )
-
-    with col2:
-        limit_geom = st.slider(
-            "Máx. incendios a cargar (geometría)",
-            min_value=10,
-            max_value=300,
-            value=100,
-            step=10,
-        )
+    else:
+        ycol = None
 
     # =========================
-    # 4) TABLA DE DATOS
+    # TABLA COMPLETA
     # =========================
-    st.subheader("📋 Datos Copernicus (sin geometría)")
+    st.subheader("📋 Dataset Copernicus completo (sin geometría)")
     st.dataframe(attrs, width="stretch")
 
     # =========================
-    # 5) MÉTRICAS
+    # MÉTRICAS GLOBALES
     # =========================
     area_cols = [
-        c for c in attrs.columns if "area" in c.lower() and "ha" in c.lower()
+        c for c in attrs.columns
+        if "area" in c.lower() and "ha" in c.lower()
     ]
     area_col = area_cols[0] if area_cols else None
 
@@ -383,24 +343,36 @@ Para garantizar estabilidad:
     c2.metric("Número de incendios", f"{len(attrs):,}")
 
     # =========================
-    # 6) CARGA DE GEOMETRÍA
+    # GEOMETRÍA (OPCIONAL)
     # =========================
-    st.subheader("🗺️ Visualización espacial")
+    with st.expander("🗺️ Visualizar perímetros de incendios (opcional)"):
+        st.warning(
+            "La visualización espacial está limitada para evitar "
+            "problemas de rendimiento en el navegador."
+        )
 
-    if st.button("🔥 Cargar perímetros seleccionados"):
-        if not year_sel or not year_col:
-            st.warning("Selecciona un año válido.")
+        if ycol:
+            year_sel = st.selectbox(
+                "Año",
+                sorted(attrs[ycol].dropna().unique()),
+            )
+
+            max_geom = st.slider(
+                "Máx. incendios a mostrar",
+                min_value=10,
+                max_value=300,
+                value=100,
+                step=10,
+            )
+
+            if st.button("🔥 Cargar geometría"):
+                query = {ycol: year_sel}
+                gdf = load_copernicus_geometry(query).head(max_geom)
+
+                st.success(f"Perímetros cargados: {len(gdf)}")
+                st.map(gdf)
         else:
-            query = {year_col: year_sel}
-
-            gdf = load_copernicus_geometry(query).head(limit_geom)
-
-            st.success(f"Geometrías cargadas: {len(gdf)}")
-            st.map(gdf)
-
-
-
-
+            st.info("No hay columna de año para filtrar la geometría.")
 
 
 
@@ -869,6 +841,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
