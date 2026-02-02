@@ -5,7 +5,8 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from pymongo import MongoClient
-import geopandas as gpd  # Para Copernicus (más adelante)
+import geopandas as gpd  # 
+from shapely.geometry import shape   
 
 # =========================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -821,6 +822,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
