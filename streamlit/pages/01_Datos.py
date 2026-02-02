@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
-
+import requests
+from io import StringIO
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -383,30 +384,37 @@ with tab_cop:
 # =========================================================
 # 3) TAB OPEN-METEO HISTÓRICO
 # =========================================================
-@st.cache_data(show_spinner=True, ttl=0)
-def load_openmeteo(path: str) -> pd.DataFrame:
-    df_ = pd.read_csv(path)
 
-    # --- limpiar nombres de columnas (BOM, espacios, etc.) ---
+@st.cache_data(show_spinner=True)
+def load_openmeteo(url: str) -> pd.DataFrame:
+    # --- descargar contenido REAL ---
+    r = requests.get(url, timeout=30)
+    r.raise_for_status()
+
+    # --- detectar Git LFS pointer (ERROR CLARO) ---
+    if r.text.startswith("version https://git-lfs.github.com"):
+        raise ValueError(
+            "Git LFS pointer recibido en lugar del CSV real. "
+            "El archivo no se está descargando correctamente."
+        )
+
+    # --- leer CSV desde texto ---
+    df_ = pd.read_csv(StringIO(r.text))
+
+    # --- limpiar nombres de columnas ---
     df_.columns = (
         df_.columns
         .str.replace("\ufeff", "", regex=False)
         .str.strip()
     )
 
-    # --- detectar columna de fecha ---
-    if "time" in df_.columns:
-        df_["date"] = pd.to_datetime(df_["time"], errors="coerce")
-    elif "date" in df_.columns:
-        df_["date"] = pd.to_datetime(df_["date"], errors="coerce")
-    elif "datetime" in df_.columns:
-        df_["date"] = pd.to_datetime(df_["datetime"], errors="coerce")
-    elif "fecha" in df_.columns:
-        df_["date"] = pd.to_datetime(df_["fecha"], errors="coerce")
-    else:
+    # --- columna fecha (tu CSV tiene 'time') ---
+    if "time" not in df_.columns:
         raise ValueError(
-            f"No se encontró columna de fecha. Columnas disponibles: {list(df_.columns)}"
+            f"No se encontró columna 'time'. Columnas disponibles: {list(df_.columns)}"
         )
+
+    df_["date"] = pd.to_datetime(df_["time"], errors="coerce")
 
     # --- renombrado estándar ---
     df_ = df_.rename(
@@ -420,10 +428,13 @@ def load_openmeteo(path: str) -> pd.DataFrame:
 
     return df_
 
+ df_
+
 
 OPENMETEO_CSV = (
     "https://raw.githubusercontent.com/aitorherran06/tfm/main/data/openmeteo_historico.csv"
 )
+
 
 with tab_openmeteo:
     st.header("🌦️ Open-Meteo – Meteorología histórica")
@@ -443,18 +454,15 @@ de forma que cada fila representa el clima diario de una provincia.
         st.success(f"Registros provincia–día: **{len(df_met):,}**")
 
         if df_met["date"].notna().any():
-            min_date_met = df_met["date"].min()
-            max_date_met = df_met["date"].max()
             st.caption(
                 f"🗓️ Periodo disponible Open-Meteo: "
-                f"**{min_date_met:%d/%m/%Y} – {max_date_met:%d/%m/%Y}**"
+                f"**{df_met['date'].min():%d/%m/%Y} – {df_met['date'].max():%d/%m/%Y}**"
             )
         else:
             st.caption("🗓️ Periodo disponible Open-Meteo: no hay fechas válidas.")
 
     except Exception as e:
         st.error(f"❌ No se pudo cargar Open-Meteo: {e}")
-        st.info("Revisa el CSV y el nombre de la columna de fecha.")
         st.stop()
 
     # ---------- EXPLICACIÓN ----------
@@ -489,72 +497,41 @@ de forma que cada fila representa el clima diario de una provincia.
 
     # ---------- MÉTRICAS ----------
     st.subheader("📊 Indicadores básicos")
-
     c1, c2, c3, c4 = st.columns(4)
 
-    c1.metric(
-        "Temp. máxima media",
-        f"{df_met['meteo_temp_max'].mean():.1f} °C"
-        if "meteo_temp_max" in df_met.columns
-        else "N/D",
-    )
-
-    c2.metric(
-        "Temp. mínima media",
-        f"{df_met['meteo_temp_min'].mean():.1f} °C"
-        if "meteo_temp_min" in df_met.columns
-        else "N/D",
-    )
-
-    c3.metric(
-        "Humedad mínima media",
-        f"{df_met['meteo_humidity_min'].mean():.1f} %"
-        if "meteo_humidity_min" in df_met.columns
-        else "N/D",
-    )
-
-    c4.metric(
-        "Viento máx. medio",
-        f"{df_met['meteo_wind_max'].mean():.1f} km/h"
-        if "meteo_wind_max" in df_met.columns
-        else "N/D",
-    )
+    c1.metric("Temp. máxima media", f"{df_met['meteo_temp_max'].mean():.1f} °C")
+    c2.metric("Temp. mínima media", f"{df_met['meteo_temp_min'].mean():.1f} °C")
+    c3.metric("Humedad mínima media", f"{df_met['meteo_humidity_min'].mean():.1f} %")
+    c4.metric("Viento máx. medio", f"{df_met['meteo_wind_max'].mean():.1f} km/h")
 
     # ---------- SERIE MENSUAL ----------
-    if "meteo_temp_max" in df_met.columns:
-        st.subheader("📈 Temperatura máxima media por mes")
+    st.subheader("📈 Temperatura máxima media por mes")
 
-        df_met["month"] = df_met["date"].dt.month
-        df_met["month_name"] = df_met["date"].dt.strftime("%b")
+    df_met["month"] = df_met["date"].dt.month
+    df_met["month_name"] = df_met["date"].dt.strftime("%b")
 
-        monthly = (
-            df_met.groupby(["month", "month_name"], as_index=False)
-            .agg(temp_max_mean=("meteo_temp_max", "mean"))
-            .sort_values("month")
+    monthly = (
+        df_met.groupby(["month", "month_name"], as_index=False)
+        .agg(temp_max_mean=("meteo_temp_max", "mean"))
+        .sort_values("month")
+    )
+
+    chart_month = (
+        alt.Chart(monthly)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X(
+                "month_name:N",
+                title="Mes",
+                sort=["Jan","Feb","Mar","Apr","May","Jun",
+                      "Jul","Aug","Sep","Oct","Nov","Dec"],
+            ),
+            y=alt.Y("temp_max_mean:Q", title="Temp. máxima media (°C)"),
         )
+        .properties(height=300)
+    )
 
-        chart_month = (
-            alt.Chart(monthly)
-            .mark_line(point=True)
-            .encode(
-                x=alt.X(
-                    "month_name:N",
-                    title="Mes",
-                    sort=[
-                        "Jan","Feb","Mar","Apr","May","Jun",
-                        "Jul","Aug","Sep","Oct","Nov","Dec",
-                    ],
-                ),
-                y=alt.Y(
-                    "temp_max_mean:Q",
-                    title="Temp. máxima media (°C)",
-                ),
-            )
-            .properties(height=300)
-        )
-
-        st.altair_chart(chart_month, use_container_width=True)
-
+    st.altair_chart(chart_month, use_container_width=True)
 
 
 # =========================================================
@@ -843,6 +820,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
