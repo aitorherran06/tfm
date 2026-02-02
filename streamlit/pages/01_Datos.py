@@ -387,36 +387,36 @@ with tab_cop:
 
 @st.cache_data(show_spinner=True)
 def load_openmeteo(url: str) -> pd.DataFrame:
-    # --- descargar contenido REAL ---
+    # Descargar CSV desde GitHub RAW
     r = requests.get(url, timeout=30)
     r.raise_for_status()
 
-    # --- detectar Git LFS pointer (ERROR CLARO) ---
+    # Protección contra Git LFS pointer
     if r.text.startswith("version https://git-lfs.github.com"):
         raise ValueError(
-            "Git LFS pointer recibido en lugar del CSV real. "
-            "El archivo no se está descargando correctamente."
+            "Se ha recibido un puntero Git LFS en lugar del CSV real. "
+            "Revisa que el archivo no esté trackeado por LFS."
         )
 
-    # --- leer CSV desde texto ---
+    # Leer CSV desde texto
     df_ = pd.read_csv(StringIO(r.text))
 
-    # --- limpiar nombres de columnas ---
+    # Limpiar nombres de columnas
     df_.columns = (
         df_.columns
         .str.replace("\ufeff", "", regex=False)
         .str.strip()
     )
 
-    # --- columna fecha (tu CSV tiene 'time') ---
+    # Columna de fecha (Open-Meteo usa 'time')
     if "time" not in df_.columns:
         raise ValueError(
-            f"No se encontró columna 'time'. Columnas disponibles: {list(df_.columns)}"
+            f"No existe columna 'time'. Columnas disponibles: {list(df_.columns)}"
         )
 
     df_["date"] = pd.to_datetime(df_["time"], errors="coerce")
 
-    # --- renombrado estándar ---
+    # Renombrado estándar para el proyecto
     df_ = df_.rename(
         columns={
             "temperature_2m_max": "meteo_temp_max",
@@ -428,12 +428,9 @@ def load_openmeteo(url: str) -> pd.DataFrame:
 
     return df_
 
- df_
 
 
-OPENMETEO_CSV = (
-    "https://raw.githubusercontent.com/aitorherran06/tfm/main/data/openmeteo_historico.csv"
-)
+OPENMETEO_CSV = "https://raw.githubusercontent.com/aitorherran06/tfm/main/data/openmeteo_historico.csv"
 
 
 with tab_openmeteo:
@@ -442,45 +439,29 @@ with tab_openmeteo:
     st.markdown(
         """
 Open-Meteo proporciona **series históricas de meteorología** a partir de coordenadas.  
-En este dataset, los datos ya están **agregados por provincia y día**, 
-de forma que cada fila representa el clima diario de una provincia.
+Los datos están **agregados por provincia y día**.
 """
     )
 
     # ---------- CARGA DATASET ----------
     try:
         df_met = load_openmeteo(OPENMETEO_CSV)
-
         st.success(f"Registros provincia–día: **{len(df_met):,}**")
-
-        if df_met["date"].notna().any():
-            st.caption(
-                f"🗓️ Periodo disponible Open-Meteo: "
-                f"**{df_met['date'].min():%d/%m/%Y} – {df_met['date'].max():%d/%m/%Y}**"
-            )
-        else:
-            st.caption("🗓️ Periodo disponible Open-Meteo: no hay fechas válidas.")
-
     except Exception as e:
         st.error(f"❌ No se pudo cargar Open-Meteo: {e}")
         st.stop()
 
-    # ---------- EXPLICACIÓN ----------
-    with st.expander("ℹ️ ¿Qué significan las columnas de Open-Meteo?"):
-        st.markdown(
-            """
-- **date**: día al que corresponde la observación.  
-- **provincia**: provincia asociada a las coordenadas.  
-- **meteo_temp_max / meteo_temp_min**: temperatura máxima y mínima diarias (°C).  
-- **meteo_humidity_min**: humedad relativa mínima del día (%).  
-- **meteo_wind_max**: velocidad máxima del viento (10 m).
-"""
+    # ---------- PERIODO ----------
+    if df_met["date"].notna().any():
+        st.caption(
+            f"🗓️ Periodo disponible: "
+            f"**{df_met['date'].min():%d/%m/%Y} – {df_met['date'].max():%d/%m/%Y}**"
         )
 
     # ---------- TABLA ----------
     st.subheader("📋 Muestra de datos meteorológicos")
 
-    cols_met_sample = [
+    cols = [
         "date",
         "provincia",
         "meteo_temp_max",
@@ -488,51 +469,67 @@ de forma que cada fila representa el clima diario de una provincia.
         "meteo_humidity_min",
         "meteo_wind_max",
     ]
-    cols_met_sample = [c for c in cols_met_sample if c in df_met.columns]
+    cols = [c for c in cols if c in df_met.columns]
 
-    st.dataframe(
-        df_met[cols_met_sample].head(20),
-        use_container_width=True,
-    )
+    st.dataframe(df_met[cols].head(20), use_container_width=True)
 
     # ---------- MÉTRICAS ----------
     st.subheader("📊 Indicadores básicos")
+
     c1, c2, c3, c4 = st.columns(4)
 
-    c1.metric("Temp. máxima media", f"{df_met['meteo_temp_max'].mean():.1f} °C")
-    c2.metric("Temp. mínima media", f"{df_met['meteo_temp_min'].mean():.1f} °C")
-    c3.metric("Humedad mínima media", f"{df_met['meteo_humidity_min'].mean():.1f} %")
-    c4.metric("Viento máx. medio", f"{df_met['meteo_wind_max'].mean():.1f} km/h")
+    c1.metric(
+        "Temp. máxima media",
+        f"{df_met['meteo_temp_max'].mean():.1f} °C"
+        if "meteo_temp_max" in df_met.columns else "N/D"
+    )
+
+    c2.metric(
+        "Temp. mínima media",
+        f"{df_met['meteo_temp_min'].mean():.1f} °C"
+        if "meteo_temp_min" in df_met.columns else "N/D"
+    )
+
+    c3.metric(
+        "Humedad mínima media",
+        f"{df_met['meteo_humidity_min'].mean():.1f} %"
+        if "meteo_humidity_min" in df_met.columns else "N/D"
+    )
+
+    c4.metric(
+        "Viento máx. medio",
+        f"{df_met['meteo_wind_max'].mean():.1f} km/h"
+        if "meteo_wind_max" in df_met.columns else "N/D"
+    )
 
     # ---------- SERIE MENSUAL ----------
-    st.subheader("📈 Temperatura máxima media por mes")
+    if "meteo_temp_max" in df_met.columns:
+        st.subheader("📈 Temperatura máxima media por mes")
 
-    df_met["month"] = df_met["date"].dt.month
-    df_met["month_name"] = df_met["date"].dt.strftime("%b")
+        df_met["month"] = df_met["date"].dt.month
+        df_met["month_name"] = df_met["date"].dt.strftime("%b")
 
-    monthly = (
-        df_met.groupby(["month", "month_name"], as_index=False)
-        .agg(temp_max_mean=("meteo_temp_max", "mean"))
-        .sort_values("month")
-    )
-
-    chart_month = (
-        alt.Chart(monthly)
-        .mark_line(point=True)
-        .encode(
-            x=alt.X(
-                "month_name:N",
-                title="Mes",
-                sort=["Jan","Feb","Mar","Apr","May","Jun",
-                      "Jul","Aug","Sep","Oct","Nov","Dec"],
-            ),
-            y=alt.Y("temp_max_mean:Q", title="Temp. máxima media (°C)"),
+        monthly = (
+            df_met.groupby(["month", "month_name"], as_index=False)
+            .agg(temp_max_mean=("meteo_temp_max", "mean"))
+            .sort_values("month")
         )
-        .properties(height=300)
-    )
 
-    st.altair_chart(chart_month, use_container_width=True)
+        chart = (
+            alt.Chart(monthly)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X(
+                    "month_name:N",
+                    sort=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+                    title="Mes",
+                ),
+                y=alt.Y("temp_max_mean:Q", title="Temp. máxima media (°C)"),
+            )
+            .properties(height=300)
+        )
 
+        st.altair_chart(chart, use_container_width=True)
 
 # =========================================================
 # 4) TAB DATOS CRONJOBS (AEMET + FIRMS actualizado)
@@ -820,6 +817,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
