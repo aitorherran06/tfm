@@ -219,13 +219,9 @@ with tab_firms:
     else:
         st.info("No hay fechas válidas para construir la serie anual.")
 
-# =========================================================
-# 2) TAB COPERNICUS EFFIS – PERÍMETROS DE INCENDIOS (MONGO)
-# =========================================================
-
 
 # =========================================================
-# 2) TAB COPERNICUS EFFIS – PERÍMETROS DE INCENDIOS (SEGURO)
+# 2) TAB COPERNICUS EFFIS – PERÍMETROS DE INCENDIOS (PAGINADO)
 # =========================================================
 
 import pandas as pd
@@ -236,15 +232,16 @@ from pymongo import MongoClient
 from shapely.geometry import shape
 
 # ---------------------------------------------------------
-# FUNCIONES DE CARGA (MISMO PATRÓN QUE FIRMS)
+# FUNCIONES DE CARGA
 # ---------------------------------------------------------
 
 @st.cache_data(show_spinner=True)
-def load_copernicus_attrs(limit: int = 2000) -> pd.DataFrame:
+def load_copernicus_attrs_page(page: int, page_size: int = 2000) -> pd.DataFrame:
     """
-    Carga SOLO atributos (sin geometría).
-    Rápido y seguro para Streamlit Cloud.
+    Carga atributos Copernicus paginados (SIN geometría).
     """
+    skip = (page - 1) * page_size
+
     client = MongoClient(st.secrets["MONGO"]["URI"])
     col = client["incendios_espana"]["copernicus_effis"]
 
@@ -253,9 +250,11 @@ def load_copernicus_attrs(limit: int = 2000) -> pd.DataFrame:
             {},
             {
                 "_id": 0,
-                "geometry": 0,   # 🔑 SIN geometría
+                "geometry": 0,  # 🔑 nunca geometría aquí
             },
-        ).limit(limit)
+        )
+        .skip(skip)
+        .limit(page_size)
     )
 
     return pd.DataFrame(docs)
@@ -264,7 +263,7 @@ def load_copernicus_attrs(limit: int = 2000) -> pd.DataFrame:
 @st.cache_data(show_spinner=True)
 def load_copernicus_geometry(query: dict) -> gpd.GeoDataFrame:
     """
-    Carga geometría SOLO cuando el usuario la pide
+    Carga geometría SOLO cuando el usuario la solicita
     """
     client = MongoClient(st.secrets["MONGO"]["URI"])
     col = client["incendios_espana"]["copernicus_effis"]
@@ -288,28 +287,47 @@ with tab_cop:
 Copernicus **EFFIS (European Forest Fire Information System)** proporciona los  
 **perímetros oficiales de incendios forestales** en Europa.
 
-👉 Para evitar bloqueos, primero se cargan **solo los atributos**  
-👉 La **geometría se carga bajo demanda**
+Para garantizar estabilidad:
+- 📦 Los **atributos se cargan paginados**
+- 🗺️ La **geometría se carga solo bajo demanda**
 """
     )
 
     # =========================
-    # 1) CARGA LIGERA
+    # 1) CONTROLES DE PAGINACIÓN
+    # =========================
+    st.subheader("📦 Navegación por el dataset")
+
+    PAGE_SIZE = 2000
+
+    page = st.number_input(
+        "Página",
+        min_value=1,
+        step=1,
+        value=1,
+        help=f"Cada página carga {PAGE_SIZE} registros",
+    )
+
+    # =========================
+    # 2) CARGA DE ATRIBUTOS
     # =========================
     try:
-        attrs = load_copernicus_attrs()
+        attrs = load_copernicus_attrs_page(page=page, page_size=PAGE_SIZE)
     except Exception as e:
         st.error(f"❌ Error cargando Copernicus: {e}")
         st.stop()
 
     if attrs.empty:
-        st.warning("⚠️ No hay datos Copernicus en MongoDB.")
+        st.warning("⚠️ No hay más registros en esta página.")
         st.stop()
 
-    st.success(f"Registros disponibles (muestra): **{len(attrs):,}**")
+    st.success(
+        f"Registros cargados: **{len(attrs):,}** "
+        f"(página {page})"
+    )
 
     # =========================
-    # 2) FILTROS
+    # 3) FILTROS
     # =========================
     st.subheader("🔎 Filtros")
 
@@ -341,13 +359,13 @@ Copernicus **EFFIS (European Forest Fire Information System)** proporciona los
         )
 
     # =========================
-    # 3) TABLA
+    # 4) TABLA DE DATOS
     # =========================
-    st.subheader("📋 Muestra de datos (sin geometría)")
-    st.dataframe(attrs.head(20), width="stretch")
+    st.subheader("📋 Datos Copernicus (sin geometría)")
+    st.dataframe(attrs, width="stretch")
 
     # =========================
-    # 4) MÉTRICAS
+    # 5) MÉTRICAS
     # =========================
     area_cols = [
         c for c in attrs.columns if "area" in c.lower() and "ha" in c.lower()
@@ -365,21 +383,24 @@ Copernicus **EFFIS (European Forest Fire Information System)** proporciona los
     c2.metric("Número de incendios", f"{len(attrs):,}")
 
     # =========================
-    # 5) CARGA DE GEOMETRÍA (BOTÓN)
+    # 6) CARGA DE GEOMETRÍA
     # =========================
-    st.subheader("🗺️ Cargar geometría")
+    st.subheader("🗺️ Visualización espacial")
 
     if st.button("🔥 Cargar perímetros seleccionados"):
         if not year_sel or not year_col:
-            st.warning("No se puede filtrar por año.")
+            st.warning("Selecciona un año válido.")
         else:
             query = {year_col: year_sel}
 
-            gdf = load_copernicus_geometry(query)
-            gdf = gdf.head(limit_geom)
+            gdf = load_copernicus_geometry(query).head(limit_geom)
 
             st.success(f"Geometrías cargadas: {len(gdf)}")
             st.map(gdf)
+
+
+
+
 
 
 
@@ -848,6 +869,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
