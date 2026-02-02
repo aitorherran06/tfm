@@ -384,6 +384,39 @@ with tab_cop:
 # 3) TAB OPEN-METEO HISTÓRICO
 # =========================================================
 
+
+@st.cache_data(show_spinner=True)
+def load_openmeteo(path: str) -> pd.DataFrame:
+    df_ = pd.read_csv(path)
+
+    # Detectar columna de fecha
+    if "time" in df_.columns:
+        df_["date"] = pd.to_datetime(df_["time"], errors="coerce")
+    elif "date" in df_.columns:
+        df_["date"] = pd.to_datetime(df_["date"], errors="coerce")
+    elif "datetime" in df_.columns:
+        df_["date"] = pd.to_datetime(df_["datetime"], errors="coerce")
+    elif "fecha" in df_.columns:
+        df_["date"] = pd.to_datetime(df_["fecha"], errors="coerce")
+    else:
+        raise ValueError(
+            "No se encontró ninguna columna de fecha (time / date / datetime / fecha)"
+        )
+
+    # Renombrado estándar
+    df_ = df_.rename(
+        columns={
+            "temperature_2m_max": "meteo_temp_max",
+            "temperature_2m_min": "meteo_temp_min",
+            "relative_humidity_2m_min": "meteo_humidity_min",
+            "windspeed_10m_max": "meteo_wind_max",
+        }
+    )
+
+    return df_
+
+
+
 OPENMETEO_CSV = "data/openmeteo_historico.csv"
 
 with tab_openmeteo:
@@ -397,6 +430,7 @@ de forma que cada fila representa el clima diario de una provincia.
 """
     )
 
+    # ---------- CARGA DATASET ----------
     try:
         df_met = load_openmeteo(OPENMETEO_CSV)
 
@@ -417,6 +451,7 @@ de forma que cada fila representa el clima diario de una provincia.
         st.info("Revisa el CSV y el nombre de la columna de fecha.")
         st.stop()
 
+    # ---------- EXPLICACIÓN ----------
     with st.expander("ℹ️ ¿Qué significan las columnas de Open-Meteo?"):
         st.markdown(
             """
@@ -428,7 +463,9 @@ de forma que cada fila representa el clima diario de una provincia.
 """
         )
 
+    # ---------- TABLA ----------
     st.subheader("📋 Muestra de datos meteorológicos")
+
     cols_met_sample = [
         "date",
         "provincia",
@@ -438,7 +475,14 @@ de forma que cada fila representa el clima diario de una provincia.
         "meteo_wind_max",
     ]
     cols_met_sample = [c for c in cols_met_sample if c in df_met.columns]
-    st.dataframe(df_met[cols_met_sample].head(20), use_container_width=True)
+
+    st.dataframe(
+        df_met[cols_met_sample].head(20),
+        use_container_width=True,
+    )
+
+    # ---------- MÉTRICAS ----------
+    st.subheader("📊 Indicadores básicos")
 
     c1, c2, c3, c4 = st.columns(4)
 
@@ -470,7 +514,7 @@ de forma que cada fila representa el clima diario de una provincia.
         else "N/D",
     )
 
-    # -------- SERIES --------
+    # ---------- SERIE MENSUAL ----------
     if "meteo_temp_max" in df_met.columns:
         st.subheader("📈 Temperatura máxima media por mes")
 
@@ -495,7 +539,10 @@ de forma que cada fila representa el clima diario de una provincia.
                         "Jul","Aug","Sep","Oct","Nov","Dec",
                     ],
                 ),
-                y=alt.Y("temp_max_mean:Q", title="Temp. máxima media (°C)"),
+                y=alt.Y(
+                    "temp_max_mean:Q",
+                    title="Temp. máxima media (°C)",
+                ),
             )
             .properties(height=300)
         )
@@ -790,6 +837,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
