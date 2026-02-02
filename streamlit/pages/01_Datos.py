@@ -225,7 +225,7 @@ with tab_firms:
 
 
 # =========================================================
-# 2- COPERNICUS EFFIS – INCENDIOS FORESTALES EN ESPAÑA
+# 2 - COPERNICUS EFFIS – INCENDIOS FORESTALES EN ESPAÑA
 # =========================================================
 
 import streamlit as st
@@ -237,7 +237,7 @@ from pymongo import MongoClient
 from shapely.geometry import shape
 
 # =========================================================
-# CONFIGURACIÓN
+# CONFIG
 # =========================================================
 
 MONGO_URI = st.secrets["MONGO"]["URI"]
@@ -263,26 +263,21 @@ def load_copernicus_spain() -> gpd.GeoDataFrame:
         return gpd.GeoDataFrame()
 
     geometries = [shape(d.pop("geometry")) for d in docs]
-    gdf = gpd.GeoDataFrame(docs, geometry=geometries, crs="EPSG:4326")
-
-    return gdf
-
+    return gpd.GeoDataFrame(docs, geometry=geometries, crs="EPSG:4326")
 
 # =========================================================
-# UI – CABECERA
+# UI
 # =========================================================
 
 st.header("🔥 Copernicus EFFIS – Incendios forestales en España")
 
 st.markdown(
     """
-Copernicus **EFFIS (European Forest Fire Information System)** proporciona  
-los **perímetros oficiales de incendios forestales** en Europa.
+Perímetros oficiales de incendios forestales (**Copernicus EFFIS**).
 
-**Características del visor:**
-- 🇪🇸 Dataset limitado a **España**
-- 🗺️ Visualización **poligonal real** (no puntos)
-- ⚡ Geometría simplificada para buen rendimiento
+- 🇪🇸 Dataset limitado a España  
+- 🗺️ Polígonos reales  
+- ⚡ Geometría simplificada  
 """
 )
 
@@ -293,7 +288,7 @@ los **perímetros oficiales de incendios forestales** en Europa.
 gdf = load_copernicus_spain()
 
 if gdf.empty:
-    st.warning("⚠️ No hay datos Copernicus en MongoDB.")
+    st.warning("No hay datos Copernicus en MongoDB.")
     st.stop()
 
 st.success(f"Incendios cargados: **{len(gdf):,}**")
@@ -349,36 +344,43 @@ c2.metric(
 )
 
 # =========================================================
-# MAPA – PYDECK (POLÍGONOS)
+# MAPA – PYDECK (CORREGIDO)
 # =========================================================
 
 st.subheader("🗺️ Mapa de perímetros quemados")
 
 if not gdf_filt.empty:
-    geojson = json.loads(gdf_filt.to_json())
+
+    # ---- LIMPIEZA GEOJSON ----
+    gdf_map = gdf_filt.copy()
+    gdf_map = gdf_map.drop(
+        columns=[c for c in gdf_map.columns if "date" in c.lower()],
+        errors="ignore",
+    )
+
+    gdf_map["YEAR"] = gdf_map["YEAR"].astype(int)
+    gdf_map["AREA_HA"] = gdf_map["AREA_HA"].fillna(0).astype(float)
+
+    geojson = json.loads(gdf_map.to_json())
 
     layer = pdk.Layer(
         "GeoJsonLayer",
         geojson,
         pickable=True,
-        stroked=True,
         filled=True,
-        extruded=False,
-        get_fill_color=[255, 60, 60, 120],
-        get_line_color=[160, 0, 0, 200],
+        stroked=True,
+        get_fill_color=[255, 70, 70, 120],
+        get_line_color=[150, 0, 0, 200],
         line_width_min_pixels=1,
-    )
-
-    view_state = pdk.ViewState(
-        latitude=40.3,
-        longitude=-3.7,
-        zoom=5,
-        pitch=0,
     )
 
     deck = pdk.Deck(
         layers=[layer],
-        initial_view_state=view_state,
+        initial_view_state=pdk.ViewState(
+            latitude=40.3,
+            longitude=-3.7,
+            zoom=5,
+        ),
         tooltip={
             "html": """
             <b>Provincia:</b> {PROVINCE}<br/>
@@ -389,6 +391,7 @@ if not gdf_filt.empty:
     )
 
     st.pydeck_chart(deck)
+
 else:
     st.info("No hay incendios para los filtros seleccionados.")
 
@@ -873,6 +876,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
