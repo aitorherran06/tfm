@@ -427,8 +427,6 @@ OPENMETEO_CSV = (
     "https://raw.githubusercontent.com/aitorherran06/tfm/main/data/openmeteo_historico.csv"
 )
 
-with open(OPENMETEO_CSV, "r") as f:
-    st.write(f.readline())
 
 with tab_openmeteo:
     st.header("🌦️ Open-Meteo – Meteorología histórica")
@@ -848,6 +846,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
