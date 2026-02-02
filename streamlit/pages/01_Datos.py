@@ -344,16 +344,25 @@ c2.metric(
 )
 
 # =========================================================
-# MAPA – PYDECK (POLÍGONOS MEJORADO)
+# MAPA – PYDECK (POLÍGONOS FINAL, SIN ERRORES)
 # =========================================================
 
 st.subheader("🗺️ Mapa de perímetros quemados")
 
 if not gdf_filt.empty:
-    # Convertimos a GeoJSON
-    geojson = json.loads(gdf_filt.to_json())
 
-    # 🔥 Capa de incendios
+    # --- 1️⃣ Copia segura ---
+    gdf_map = gdf_filt.copy()
+
+    # --- 2️⃣ Convertir fechas a string (CLAVE) ---
+    for col in ["FIREDATE", "LASTUPDATE"]:
+        if col in gdf_map.columns:
+            gdf_map[col] = gdf_map[col].astype(str)
+
+    # --- 3️⃣ Convertir a GeoJSON ---
+    geojson = json.loads(gdf_map.to_json())
+
+    # --- 4️⃣ Capa PyDeck ---
     layer = pdk.Layer(
         "GeoJsonLayer",
         geojson,
@@ -361,30 +370,32 @@ if not gdf_filt.empty:
         stroked=True,
         filled=True,
         extruded=False,
-        get_fill_color=[255, 0, 0, 140],     # 🔴 rojo más visible
-        get_line_color=[255, 255, 255, 220], # ⚪ borde blanco
+        get_fill_color=[255, 40, 40, 150],      # 🔴 rojo potente
+        get_line_color=[255, 255, 255, 230],    # ⚪ borde blanco
         line_width_min_pixels=2,
     )
 
-    # 📍 Centro automático del mapa
-    centroid = gdf_filt.geometry.unary_union.centroid
+    # --- 5️⃣ Centrado automático ---
+    centroid = gdf_map.geometry.unary_union.centroid
 
     view_state = pdk.ViewState(
         latitude=centroid.y,
         longitude=centroid.x,
-        zoom=6,        # 🔍 mucho mejor que 5
+        zoom=6,
         pitch=0,
     )
 
+    # --- 6️⃣ Deck ---
     deck = pdk.Deck(
         layers=[layer],
         initial_view_state=view_state,
-        map_style="mapbox://styles/mapbox/light-v11",  # 🌍 fondo claro
+        map_style="mapbox://styles/mapbox/light-v11",
         tooltip={
             "html": """
             <b>Provincia:</b> {PROVINCE}<br/>
             <b>Año:</b> {YEAR}<br/>
-            <b>Área quemada (ha):</b> {AREA_HA}
+            <b>Área quemada (ha):</b> {AREA_HA}<br/>
+            <b>Fecha:</b> {FIREDATE}
             """
         },
     )
@@ -393,6 +404,8 @@ if not gdf_filt.empty:
 
 else:
     st.info("No hay incendios para los filtros seleccionados.")
+
+
     
 
 # =========================================================
@@ -876,6 +889,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
