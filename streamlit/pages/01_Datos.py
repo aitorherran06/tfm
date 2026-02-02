@@ -222,23 +222,32 @@ with tab_firms:
 
 
 
+
+
 # =========================================================
-# 2 - COPERNICUS EFFIS – INCENDIOS EN ESPAÑA (MAPA DIRECTO)
+# 2- COPERNICUS EFFIS – INCENDIOS FORESTALES EN ESPAÑA
 # =========================================================
 
 import streamlit as st
 import pandas as pd
 import geopandas as gpd
+import pydeck as pdk
+import json
 from pymongo import MongoClient
 from shapely.geometry import shape
 
 # =========================================================
-# CONFIG
+# CONFIGURACIÓN
 # =========================================================
 
 MONGO_URI = st.secrets["MONGO"]["URI"]
 DB_NAME = "incendios_espana"
 COLLECTION = "copernicus_effis"
+
+st.set_page_config(
+    page_title="Copernicus EFFIS – Incendios en España",
+    layout="wide",
+)
 
 # =========================================================
 # CARGA COMPLETA (CON GEOMETRÍA)
@@ -260,18 +269,20 @@ def load_copernicus_spain() -> gpd.GeoDataFrame:
 
 
 # =========================================================
-# UI
+# UI – CABECERA
 # =========================================================
 
 st.header("🔥 Copernicus EFFIS – Incendios forestales en España")
 
 st.markdown(
     """
-Perímetros oficiales de incendios forestales (**Copernicus EFFIS**).
+Copernicus **EFFIS (European Forest Fire Information System)** proporciona  
+los **perímetros oficiales de incendios forestales** en Europa.
 
-- 🇪🇸 Dataset **limitado a España**
-- 🗺️ Geometría simplificada
-- 🚀 Mapa interactivo desde el inicio
+**Características del visor:**
+- 🇪🇸 Dataset limitado a **España**
+- 🗺️ Visualización **poligonal real** (no puntos)
+- ⚡ Geometría simplificada para buen rendimiento
 """
 )
 
@@ -282,7 +293,7 @@ Perímetros oficiales de incendios forestales (**Copernicus EFFIS**).
 gdf = load_copernicus_spain()
 
 if gdf.empty:
-    st.warning("No hay datos Copernicus en MongoDB.")
+    st.warning("⚠️ No hay datos Copernicus en MongoDB.")
     st.stop()
 
 st.success(f"Incendios cargados: **{len(gdf):,}**")
@@ -305,13 +316,13 @@ col1, col2 = st.columns(2)
 with col1:
     year_sel = st.selectbox(
         "Año",
-        sorted(gdf["YEAR"].dropna().unique())
+        sorted(gdf["YEAR"].dropna().unique()),
     )
 
 with col2:
     prov_sel = st.selectbox(
         "Provincia",
-        ["Todas"] + sorted(gdf["PROVINCE"].dropna().unique())
+        ["Todas"] + sorted(gdf["PROVINCE"].dropna().unique()),
     )
 
 gdf_filt = gdf[gdf["YEAR"] == year_sel]
@@ -329,32 +340,71 @@ c1, c2 = st.columns(2)
 
 c1.metric(
     "Área total quemada (ha)",
-    f"{gdf_filt['AREA_HA'].sum():,.0f}"
+    f"{gdf_filt['AREA_HA'].sum():,.0f}",
 )
 
 c2.metric(
     "Número de incendios",
-    f"{len(gdf_filt):,}"
+    f"{len(gdf_filt):,}",
 )
 
 # =========================================================
-# MAPA (DIRECTO)
+# MAPA – PYDECK (POLÍGONOS)
 # =========================================================
 
 st.subheader("🗺️ Mapa de perímetros quemados")
 
-st.map(gdf_filt)
+if not gdf_filt.empty:
+    geojson = json.loads(gdf_filt.to_json())
+
+    layer = pdk.Layer(
+        "GeoJsonLayer",
+        geojson,
+        pickable=True,
+        stroked=True,
+        filled=True,
+        extruded=False,
+        get_fill_color=[255, 60, 60, 120],
+        get_line_color=[160, 0, 0, 200],
+        line_width_min_pixels=1,
+    )
+
+    view_state = pdk.ViewState(
+        latitude=40.3,
+        longitude=-3.7,
+        zoom=5,
+        pitch=0,
+    )
+
+    deck = pdk.Deck(
+        layers=[layer],
+        initial_view_state=view_state,
+        tooltip={
+            "html": """
+            <b>Provincia:</b> {PROVINCE}<br/>
+            <b>Año:</b> {YEAR}<br/>
+            <b>Área quemada (ha):</b> {AREA_HA}
+            """
+        },
+    )
+
+    st.pydeck_chart(deck)
+else:
+    st.info("No hay incendios para los filtros seleccionados.")
 
 # =========================================================
-# TABLA (OPCIONAL)
+# TABLA
 # =========================================================
 
 with st.expander("📋 Ver tabla de atributos"):
     st.dataframe(
         gdf_filt.drop(columns="geometry")
         .sort_values("AREA_HA", ascending=False),
-        use_container_width=True
+        use_container_width=True,
     )
+
+
+
 
 
 
@@ -823,6 +873,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
