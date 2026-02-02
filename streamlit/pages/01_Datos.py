@@ -274,30 +274,40 @@ with tab_cop:
         gdf["YEAR"] = pd.to_numeric(gdf["YEAR"], errors="coerce")
         gdf["AREA_HA"] = pd.to_numeric(gdf["AREA_HA"], errors="coerce")
     
-        # ---------- FILTROS ----------
-        st.subheader("🔎 Filtros")
-    
+      # ---------- FILTROS ----------
+        st.subheader("🔎 Filtros (opcionales)")
+        
         col1, col2 = st.columns(2)
-    
+        
+        # Valores posibles
+        years = sorted(gdf["YEAR"].dropna().unique())
+        provs = sorted(gdf["PROVINCE"].dropna().unique())
+        
         with col1:
             year_sel = st.selectbox(
                 "Año",
-                sorted(gdf["YEAR"].dropna().unique()),
+                ["Todos"] + years,
+                index=0,   # 👈 por defecto TODOS
             )
-    
+        
         with col2:
             prov_sel = st.selectbox(
                 "Provincia",
-                ["Todas"] + sorted(gdf["PROVINCE"].dropna().unique()),
+                ["Todas"] + provs,
+                index=0,   # 👈 por defecto TODAS
             )
-    
-        gdf_filt = gdf[gdf["YEAR"] == year_sel]
-    
+        
+        # ---------- APLICAR FILTROS SOLO SI CAMBIAN ----------
+        gdf_filt = gdf.copy()
+        
+        if year_sel != "Todos":
+            gdf_filt = gdf_filt[gdf_filt["YEAR"] == year_sel]
+        
         if prov_sel != "Todas":
             gdf_filt = gdf_filt[gdf_filt["PROVINCE"] == prov_sel]
-    
+        
         st.caption(f"Incendios mostrados: **{len(gdf_filt):,}**")
-    
+            
         # ---------- MÉTRICAS ----------
         c1, c2 = st.columns(2)
     
@@ -838,3 +848,4 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
