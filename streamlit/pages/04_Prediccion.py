@@ -181,9 +181,7 @@ st.markdown(
 c1, c2, c3 = st.columns(3)
 
 c1.metric("Provincias evaluadas", df_f["provincia"].nunique())
-c2.metric(
-    "Provincias en alerta (≥ 0.60)", int(df_f["alerta_incendio"].sum())
-)
+c2.metric("Provincias en alerta (≥ 0.60)", int(df_f["alerta_incendio"].sum()))
 c3.metric(
     "Probabilidad media nacional",
     f"{df_f['prob_riesgo_alto'].mean():.3f}",
@@ -272,6 +270,9 @@ gdfm = gdf.merge(
 
 gdfm = gdfm.to_crs(epsg=4326)
 
+# 🔧 FORMATEO PARA TOOLTIP
+gdfm["prob_media_fmt"] = gdfm["prob_media"].round(3)
+
 max_prob = gdfm["prob_media"].max()
 gdfm["prob_norm"] = gdfm["prob_media"] / max_prob if max_prob > 0 else 0
 
@@ -287,7 +288,10 @@ layer = pdk.Layer(
 deck = pdk.Deck(
     layers=[layer],
     initial_view_state=pdk.ViewState(latitude=40.0, longitude=-3.7, zoom=5),
-    tooltip={"html": "<b>{provincia}</b><br/>Probabilidad media: {prob_media:.3f}"},
+    tooltip={
+        "html": "<b>{provincia}</b><br/>Probabilidad media: {prob_media_fmt}",
+        "style": {"color": "white"},
+    },
 )
 
 st.pydeck_chart(deck)
