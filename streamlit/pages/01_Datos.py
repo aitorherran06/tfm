@@ -259,7 +259,26 @@ with tab_cop:
         """
     )
 
-    
+    # ---------- EXPLICACIÓN DE COLUMNAS ----------
+    with st.expander("ℹ️ ¿Qué significan las columnas principales de EFFIS?"):
+        st.markdown(
+            """
+Aunque los nombres pueden variar ligeramente según la versión del shapefile de **Copernicus EFFIS**, 
+en este dataset normalmente encontrarás:
+
+- **geometry**: polígono geoespacial que delimita el perímetro real del área quemada.  
+- **AREA_HA**: superficie quemada en hectáreas.  
+- **YEAR**: año en el que ocurrió el incendio.  
+- **FIREDATE**: fecha de inicio del incendio (cuando está disponible).  
+- **LASTUPDATE**: última actualización del registro en EFFIS.  
+- **PROVINCE**: provincia española afectada por el incendio.  
+
+En esta pestaña nos centramos principalmente en:
+- 🔥 **Área quemada (AREA_HA)** → magnitud del incendio  
+- 📅 **Año (YEAR)** → análisis temporal  
+- 🗺️ **Provincia (PROVINCE)** → análisis territorial
+"""
+        )
 
     # ---------- CARGA DATASET ----------
     gdf = load_copernicus_spain()
@@ -267,73 +286,70 @@ with tab_cop:
     if gdf.empty:
         st.warning("No hay datos Copernicus en MongoDB.")
     else:
-        # resto del código Copernicus
-
         st.success(f"Incendios cargados: **{len(gdf):,}**")
-    
+
         # ---------- NORMALIZACIÓN ----------
         gdf["YEAR"] = pd.to_numeric(gdf["YEAR"], errors="coerce")
         gdf["AREA_HA"] = pd.to_numeric(gdf["AREA_HA"], errors="coerce")
-    
-      # ---------- FILTROS ----------
+
+        # ---------- FILTROS ----------
         st.subheader("🔎 Filtros (opcionales)")
-        
+
         col1, col2 = st.columns(2)
-        
-        # Valores posibles
+
         years = sorted(gdf["YEAR"].dropna().unique())
         provs = sorted(gdf["PROVINCE"].dropna().unique())
-        
+
         with col1:
             year_sel = st.selectbox(
                 "Año",
                 ["Todos"] + years,
-                index=0,   # 👈 por defecto TODOS
+                index=0,
             )
-        
+
         with col2:
             prov_sel = st.selectbox(
                 "Provincia",
                 ["Todas"] + provs,
-                index=0,   # 👈 por defecto TODAS
+                index=0,
             )
-        
-        # ---------- APLICAR FILTROS SOLO SI CAMBIAN ----------
+
+        # ---------- APLICAR FILTROS ----------
         gdf_filt = gdf.copy()
-        
+
         if year_sel != "Todos":
             gdf_filt = gdf_filt[gdf_filt["YEAR"] == year_sel]
-        
+
         if prov_sel != "Todas":
             gdf_filt = gdf_filt[gdf_filt["PROVINCE"] == prov_sel]
-        
+
         st.caption(f"Incendios mostrados: **{len(gdf_filt):,}**")
-            
+
         # ---------- MÉTRICAS ----------
         c1, c2 = st.columns(2)
-    
+
         c1.metric(
             "Área total quemada (ha)",
             f"{gdf_filt['AREA_HA'].sum():,.0f}",
         )
-    
+
         c2.metric(
             "Número de incendios",
             f"{len(gdf_filt):,}",
         )
-    
+
         # ---------- MAPA ----------
         st.subheader("🗺️ Mapa de perímetros quemados")
-    
+
         if not gdf_filt.empty:
             gdf_map = gdf_filt.copy()
-    
+
             for col in ["FIREDATE", "LASTUPDATE"]:
                 if col in gdf_map.columns:
                     gdf_map[col] = gdf_map[col].astype(str)
-    
+
             geojson = json.loads(gdf_map.to_json())
-    
+
             layer = pdk.Layer(
                 "GeoJsonLayer",
                 geojson,
@@ -344,15 +360,15 @@ with tab_cop:
                 get_line_color=[120, 0, 0, 220],
                 line_width_min_pixels=1,
             )
-    
+
             centroid = gdf_map.geometry.unary_union.centroid
-    
+
             view_state = pdk.ViewState(
                 latitude=centroid.y,
                 longitude=centroid.x,
                 zoom=6,
             )
-    
+
             deck = pdk.Deck(
                 layers=[layer],
                 initial_view_state=view_state,
@@ -366,9 +382,9 @@ with tab_cop:
                     """
                 },
             )
-    
+
             st.pydeck_chart(deck, use_container_width=True)
-    
+
         # ---------- TABLA ----------
         with st.expander("📋 Ver tabla de atributos"):
             st.dataframe(
@@ -377,6 +393,7 @@ with tab_cop:
                 .sort_values("AREA_HA", ascending=False),
                 use_container_width=True,
             )
+            
         
         
 
@@ -826,6 +843,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
