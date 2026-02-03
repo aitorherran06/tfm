@@ -394,7 +394,36 @@ En esta pestaña nos centramos principalmente en:
                 use_container_width=True,
             )
             
-        
+
+        # ---------- RANKING ÁREA QUEMADA ----------
+        st.subheader("📊 Ranking de incendios por área quemada")
+
+        if not gdf_filt.empty:
+            top_n = 10
+
+            gdf_rank = (
+                gdf_filt
+                .sort_values("AREA_HA", ascending=False)
+                .head(top_n)
+                .copy()
+            )
+
+            # Etiqueta legible
+            gdf_rank["label"] = (
+                gdf_rank["PROVINCE"].astype(str)
+                + " ("
+                + gdf_rank["YEAR"].astype("Int64").astype(str)
+                + ")"
+            )
+
+            gdf_rank = gdf_rank.set_index("label")
+
+            st.bar_chart(
+                gdf_rank["AREA_HA"],
+                height=350,
+            )
+        else:
+            st.info("No hay incendios suficientes para mostrar el ranking.")
         
 
 # =========================================================
@@ -843,6 +872,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
