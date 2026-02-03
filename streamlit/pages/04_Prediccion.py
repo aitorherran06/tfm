@@ -202,8 +202,14 @@ agg_prov = (
     .sort_values("prob_media", ascending=False)
 )
 
+# 📊 TABLA
 st.dataframe(agg_prov, use_container_width=True)
 
+# ⬇️ ESPACIO ENTRE TABLA Y GRÁFICA
+st.write("")
+st.write("")
+
+# 📈 GRÁFICO
 chart = (
     alt.Chart(agg_prov)
     .mark_bar()
@@ -299,3 +305,4 @@ st.pydeck_chart(deck)
 st.caption(
     f"Mapa correspondiente al día **{fecha_seleccionada.strftime('%Y-%m-%d')}**."
 )
+
