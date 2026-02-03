@@ -15,42 +15,44 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 
-
 # =========================================================
 # CONFIGURACIÓN DE PÁGINA
 # =========================================================
 st.set_page_config(
     page_title="Predicción de Riesgo AEMET",
     page_icon="🔥",
-    layout="wide"
+    layout="wide",
 )
 
 st.title("🔥 Predicción de riesgo de incendio (AEMET + Random Forest)")
+
 st.markdown(
     """
-Este panel utiliza las **predicciones meteorológicas de AEMET** guardadas en MongoDB  
-y un modelo de **Random Forest** para estimar la probabilidad de que haya  
-**riesgo alto de incendio** en cada provincia y día.
+Este panel utiliza **predicciones meteorológicas de AEMET** almacenadas en MongoDB  
+y un modelo **Random Forest entrenado exclusivamente con variables meteorológicas**  
+para estimar la probabilidad de **riesgo alto de incendio** por provincia y día.
 
 **Interpretación de la probabilidad (`prob_riesgo_alto`):**
 
-- `0.00 – 0.33` → 🟩 **Riesgo bajo**  
-- `0.34 – 0.59` → 🟨 **Riesgo moderado**  
-- `≥ 0.60`     → 🟥 **Riesgo alto / alerta**  
+- `0.00 – 0.33` → 🟩 Riesgo bajo  
+- `0.34 – 0.59` → 🟨 Riesgo moderado  
+- `≥ 0.60`     → 🟥 Riesgo alto / alerta  
 
-El umbral actual de alerta está fijado en **0.60**.
+El umbral de alerta está fijado en **0.60**.
 """
 )
 
 # =========================================================
-# 1) CARGA DE SECRETS (Mongo y modelo)
+# 1) CARGA DE SECRETS
 # =========================================================
 try:
     MONGO_URI = st.secrets["MONGO"]["URI"]
     MODEL_PATH = st.secrets["MODELO"]["RUTA_MODELO"]
 except Exception:
-    st.error("❌ No se pudieron cargar los secrets. Configura .streamlit/secrets.toml")
+    st.error("❌ No se pudieron cargar los secrets. Revisa `.streamlit/secrets.toml`.")
     st.stop()
+
+THRESHOLD_ALERTA = 0.60
 
 # =========================================================
 # 2) CARGA DEL MODELO
@@ -60,6 +62,8 @@ def cargar_modelo():
     return joblib.load(MODEL_PATH)
 
 modelo = cargar_modelo()
+
+st.caption("Modelo operativo entrenado únicamente con variables meteorológicas AEMET.")
 
 # =========================================================
 # 3) CONEXIÓN A MONGO
@@ -81,7 +85,7 @@ def extraer_max(arr, campo=None):
     if campo and isinstance(arr[0], dict):
         vals = [pd.to_numeric(x.get(campo), errors="coerce") for x in arr]
     else:
-        vals = pd.to_numeric(arr, errors="coerce")
+        vals = pd.to_numeric(pd.Series(arr), errors="coerce")
     return np.nanmax(vals)
 
 
@@ -92,7 +96,7 @@ def cargar_aemet_df():
 
     for d in docs:
         fila = {
-            "provincia": d.get("provincia"),
+            "provincia": str(d.get("provincia", "")).strip(),
             "fecha": pd.to_datetime(d.get("fecha"), errors="coerce"),
         }
 
@@ -105,12 +109,13 @@ def cargar_aemet_df():
         fila["meteo_humidity_min"] = hum.get("minima")
 
         fila["meteo_wind_max"] = extraer_max(d.get("viento", []), "velocidad")
-        fila["meteo_precip_sum"] = extraer_max(d.get("probPrecipitacion", []), "value")
+        fila["meteo_precip_sum"] = extraer_max(
+            d.get("probPrecipitacion", []), "value"
+        )
 
         filas.append(fila)
 
     df = pd.DataFrame(filas)
-    df["provincia"] = df["provincia"].astype(str)
     df = df.dropna(subset=["fecha"])
     return df
 
@@ -118,10 +123,10 @@ def cargar_aemet_df():
 df_aemet = cargar_aemet_df()
 
 if df_aemet.empty:
-    st.error("❌ No hay datos en MongoDB para `aemet_predicciones`.")
+    st.error("❌ No hay datos disponibles en MongoDB (`aemet_predicciones`).")
     st.stop()
 
-st.caption(f"📂 Registros AEMET en Mongo: **{len(df_aemet):,}** filas (provincia–fecha).")
+st.caption(f"📂 Registros AEMET cargados: **{len(df_aemet):,}** filas (provincia–fecha).")
 
 # =========================================================
 # 5) PREPROCESAMIENTO Y PREDICCIÓN
@@ -143,31 +148,31 @@ for c in feat_cols:
 df_pred = df_pred.dropna(subset=feat_cols)
 
 if df_pred.empty:
-    st.error("❌ Tras limpiar datos, no quedan filas válidas para el modelo.")
+    st.error("❌ No quedan filas válidas tras limpiar los datos.")
     st.stop()
 
 df_pred["prob_riesgo_alto"] = modelo.predict_proba(df_pred[feat_cols])[:, 1]
-df_pred["alerta_incendio"] = (df_pred["prob_riesgo_alto"] >= 0.60).astype(int)
+df_pred["alerta_incendio"] = (
+    df_pred["prob_riesgo_alto"] >= THRESHOLD_ALERTA
+).astype(int)
 
 # =========================================================
 # 6) FILTRO POR FECHA
 # =========================================================
-st.sidebar.header("📅 Filtros de predicción")
+st.sidebar.header("📅 Filtros")
 
 fechas_disp = sorted(df_pred["fecha"].dt.date.unique())
-ultima_fecha = max(fechas_disp)
-
 fecha_seleccionada = st.sidebar.selectbox(
     "Fecha a mostrar:",
     fechas_disp,
-    index=fechas_disp.index(ultima_fecha),
-    format_func=lambda d: d.strftime("%Y-%m-%d")
+    index=len(fechas_disp) - 1,
+    format_func=lambda d: d.strftime("%Y-%m-%d"),
 )
 
-df_f = df_pred[df_pred["fecha"].dt.date == fecha_seleccionada].copy()
+df_f = df_pred[df_pred["fecha"].dt.date == fecha_seleccionada]
 
 st.markdown(
-    f"### 🔍 Predicción seleccionada para el día **{fecha_seleccionada.strftime('%Y-%m-%d')}**"
+    f"### 🔍 Predicción para el día **{fecha_seleccionada.strftime('%Y-%m-%d')}**"
 )
 
 # =========================================================
@@ -175,16 +180,19 @@ st.markdown(
 # =========================================================
 c1, c2, c3 = st.columns(3)
 
-c1.metric("Provincias con predicción", df_f["provincia"].nunique())
-c2.metric("Provincias en alerta (prob ≥ 0.60)", int(df_f["alerta_incendio"].sum()))
-c3.metric("Probabilidad media nacional", f"{df_f['prob_riesgo_alto'].mean():.3f}")
-
-st.caption("El umbral de alerta se ha fijado en **0.60**.")
+c1.metric("Provincias evaluadas", df_f["provincia"].nunique())
+c2.metric(
+    "Provincias en alerta (≥ 0.60)", int(df_f["alerta_incendio"].sum())
+)
+c3.metric(
+    "Probabilidad media nacional",
+    f"{df_f['prob_riesgo_alto'].mean():.3f}",
+)
 
 # =========================================================
 # 8) RANKING + GRÁFICO
 # =========================================================
-st.subheader("🏅 Ranking de provincias por probabilidad de riesgo alto")
+st.subheader("🏅 Ranking de provincias por riesgo medio")
 
 agg_prov = (
     df_f.groupby("provincia", as_index=False)
@@ -202,7 +210,7 @@ chart = (
     alt.Chart(agg_prov)
     .mark_bar()
     .encode(
-        x=alt.X("prob_media:Q", title="Probabilidad de riesgo alto"),
+        x=alt.X("prob_media:Q", title="Probabilidad media"),
         y=alt.Y("provincia:N", sort="-x", title="Provincia"),
         color=alt.condition(
             alt.datum.alerta == 1,
@@ -213,7 +221,6 @@ chart = (
             "provincia:N",
             alt.Tooltip("prob_media:Q", format=".3f"),
             alt.Tooltip("prob_max:Q", format=".3f"),
-            "alerta:Q",
         ],
     )
     .properties(height=min(600, len(agg_prov) * 25))
@@ -230,23 +237,16 @@ st.subheader("🗺️ Mapa de riesgo medio por provincia")
 @st.cache_data(show_spinner=True)
 def cargar_provincias_geometria():
     geojson_path = os.path.join(DATA_DIR, "gadm41_ESP_2.json")
-
-    if not os.path.exists(geojson_path):
-        raise FileNotFoundError(f"No se encuentra el GeoJSON: {geojson_path}")
-
     gdf = gpd.read_file(geojson_path)[["NAME_2", "geometry"]]
     gdf = gdf.rename(columns={"NAME_2": "provincia"})
-
     gdf["provincia_norm"] = (
         gdf["provincia"]
-        .astype(str)
         .str.normalize("NFKD")
         .str.encode("ascii", errors="ignore")
         .str.decode("utf-8")
         .str.lower()
         .str.strip()
     )
-
     return gdf
 
 
@@ -280,29 +280,18 @@ layer = pdk.Layer(
     data=gdfm.__geo_interface__,
     pickable=True,
     filled=True,
-    stroked=True,
     get_fill_color="[255 * prob_norm, (1 - prob_norm) * 255, 0, 150]",
-    get_line_color=[50, 50, 50],
-    line_width_min_pixels=1,
+    get_line_color=[60, 60, 60],
 )
 
 deck = pdk.Deck(
     layers=[layer],
     initial_view_state=pdk.ViewState(latitude=40.0, longitude=-3.7, zoom=5),
-    tooltip={
-        "html": "<b>{provincia}</b><br/>Probabilidad media: {prob_media}",
-        "style": {"color": "white"},
-    },
+    tooltip={"html": "<b>{provincia}</b><br/>Probabilidad media: {prob_media:.3f}"},
 )
 
 st.pydeck_chart(deck)
 
 st.caption(
-    f"Colores calculados para la fecha **{fecha_seleccionada.strftime('%Y-%m-%d')}**. "
-    "Rojo = mayor riesgo relativo según el modelo."
+    f"Mapa correspondiente al día **{fecha_seleccionada.strftime('%Y-%m-%d')}**."
 )
-
-
-
-
-
