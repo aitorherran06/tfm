@@ -338,52 +338,6 @@ En esta pestaña nos centramos principalmente en:
             f"{len(gdf_filt):,}",
         )
 
-        # ---------- MAPA ----------
-        st.subheader("🗺️ Mapa de perímetros quemados")
-
-        if not gdf_filt.empty:
-            gdf_map = gdf_filt.copy()
-
-            for col in ["FIREDATE", "LASTUPDATE"]:
-                if col in gdf_map.columns:
-                    gdf_map[col] = gdf_map[col].astype(str)
-
-            geojson = json.loads(gdf_map.to_json())
-
-            layer = pdk.Layer(
-                "GeoJsonLayer",
-                geojson,
-                pickable=True,
-                filled=True,
-                stroked=True,
-                get_fill_color=[220, 20, 20, 140],
-                get_line_color=[120, 0, 0, 220],
-                line_width_min_pixels=1,
-            )
-
-            centroid = gdf_map.geometry.unary_union.centroid
-
-            view_state = pdk.ViewState(
-                latitude=centroid.y,
-                longitude=centroid.x,
-                zoom=6,
-            )
-
-            deck = pdk.Deck(
-                layers=[layer],
-                initial_view_state=view_state,
-                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-                tooltip={
-                    "html": """
-                    <b>Provincia:</b> {PROVINCE}<br/>
-                    <b>Año:</b> {YEAR}<br/>
-                    <b>Área quemada (ha):</b> {AREA_HA}<br/>
-                    <b>Fecha:</b> {FIREDATE}
-                    """
-                },
-            )
-
-            st.pydeck_chart(deck, use_container_width=True)
 
         # ---------- TABLA ----------
         with st.expander("📋 Ver tabla de atributos"):
@@ -434,6 +388,55 @@ En esta pestaña nos centramos principalmente en:
         
         else:
             st.info("No hay datos suficientes para mostrar el ranking.")
+
+
+
+        # ---------- MAPA ----------
+        st.subheader("🗺️ Mapa de perímetros quemados")
+
+        if not gdf_filt.empty:
+            gdf_map = gdf_filt.copy()
+
+            for col in ["FIREDATE", "LASTUPDATE"]:
+                if col in gdf_map.columns:
+                    gdf_map[col] = gdf_map[col].astype(str)
+
+            geojson = json.loads(gdf_map.to_json())
+
+            layer = pdk.Layer(
+                "GeoJsonLayer",
+                geojson,
+                pickable=True,
+                filled=True,
+                stroked=True,
+                get_fill_color=[220, 20, 20, 140],
+                get_line_color=[120, 0, 0, 220],
+                line_width_min_pixels=1,
+            )
+
+            centroid = gdf_map.geometry.unary_union.centroid
+
+            view_state = pdk.ViewState(
+                latitude=centroid.y,
+                longitude=centroid.x,
+                zoom=6,
+            )
+
+            deck = pdk.Deck(
+                layers=[layer],
+                initial_view_state=view_state,
+                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+                tooltip={
+                    "html": """
+                    <b>Provincia:</b> {PROVINCE}<br/>
+                    <b>Año:</b> {YEAR}<br/>
+                    <b>Área quemada (ha):</b> {AREA_HA}<br/>
+                    <b>Fecha:</b> {FIREDATE}
+                    """
+                },
+            )
+
+            st.pydeck_chart(deck, use_container_width=True)
                 
 
 # =========================================================
@@ -882,6 +885,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
