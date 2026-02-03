@@ -395,36 +395,46 @@ En esta pestaña nos centramos principalmente en:
             )
             
 
-        # ---------- RANKING ÁREA QUEMADA ----------
-        st.subheader("📊 Ranking de incendios por área quemada")
-
+        # ---------- RANKING POR PROVINCIA ----------
+        st.subheader("📊 Ranking de área quemada por provincia")
+        
         if not gdf_filt.empty:
             top_n = 10
-
-            gdf_rank = (
+        
+            df_rank = (
                 gdf_filt
+                .groupby("PROVINCE", as_index=False)["AREA_HA"]
+                .sum()
                 .sort_values("AREA_HA", ascending=False)
                 .head(top_n)
-                .copy()
             )
-
-            # Etiqueta legible
-            gdf_rank["label"] = (
-                gdf_rank["PROVINCE"].astype(str)
-                + " ("
-                + gdf_rank["YEAR"].astype("Int64").astype(str)
-                + ")"
-            )
-
-            gdf_rank = gdf_rank.set_index("label")
-
-            st.bar_chart(
-                gdf_rank["AREA_HA"],
-                height=350,
-            )
-        else:
-            st.info("No hay incendios suficientes para mostrar el ranking.")
         
+            chart = (
+                alt.Chart(df_rank)
+                .mark_bar()
+                .encode(
+                    x=alt.X(
+                        "AREA_HA:Q",
+                        title="Área total quemada (ha)"
+                    ),
+                    y=alt.Y(
+                        "PROVINCE:N",
+                        sort="-x",
+                        title="Provincia"
+                    ),
+                    tooltip=[
+                        alt.Tooltip("PROVINCE:N", title="Provincia"),
+                        alt.Tooltip("AREA_HA:Q", title="Área quemada (ha)", format=",.0f"),
+                    ],
+                )
+                .properties(height=400)
+            )
+        
+            st.altair_chart(chart, use_container_width=True)
+        
+        else:
+            st.info("No hay datos suficientes para mostrar el ranking.")
+                
 
 # =========================================================
 # 3) TAB OPEN-METEO HISTÓRICO
@@ -872,6 +882,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
