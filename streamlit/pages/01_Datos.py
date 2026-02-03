@@ -293,7 +293,7 @@ En esta pestaña nos centramos principalmente en:
         gdf["AREA_HA"] = pd.to_numeric(gdf["AREA_HA"], errors="coerce")
 
         # ---------- FILTROS ----------
-        st.subheader("🔎 Filtros (opcionales)")
+        st.subheader("🔎 Filtros ")
 
         col1, col2 = st.columns(2)
 
@@ -885,6 +885,7 @@ Esta tabla resume cómo se han alineado en el proyecto.
         st.code("df.rename(columns=diccionario_renombrado, inplace=True)", language="python")
 
     st.success("✅ Bloque de equivalencias cargado correctamente.")
+
 
 
 
