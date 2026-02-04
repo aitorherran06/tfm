@@ -103,26 +103,6 @@ Todos los conjuntos de datos finales pueden reproducirse ejecutando el pipeline 
 
 ---
 
-## ⚙️ Reproducibilidad
-
-Para reproducir el proyecto de forma local:
-
-1. Clonar el repositorio:
-```bash
-git clone https://github.com/aitorherran06/tfm.git
-cd tfm
-```
-
-2. Crear un entorno virtual e instalar dependencias:
-```bash
-pip install -r requirements.txt
-```
-
-3. Ejecutar los notebooks en el orden indicado para reconstruir el pipeline y los datasets.
-
-> El acceso a los datos almacenados en MongoDB requiere configurar las credenciales correspondientes, que no se incluyen en el repositorio.
-
----
 
 ## 📌 Autor
 
